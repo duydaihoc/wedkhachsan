@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Aurelius Grand | Timeless Luxury</title>
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@200..800&family=Noto+Serif:ital,wght@0,100..900;1,100..900&display=swap" rel="stylesheet"/>
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+    <script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "primary": "#cba85d",
+              "background-light": "#faf8f5",
+              "background-dark": "#1f1f1f",
+              "charcoal": "#2B2D2F",
+            },
+            fontFamily: {
+              "display": ["Manrope", "sans-serif"],
+              "serif": ["Noto Serif", "serif"]
+            },
+            borderRadius: {
+              "DEFAULT": "0.5rem",
+              "lg": "1rem",
+              "xl": "1.5rem",
+              "full": "9999px"
+            },
+            boxShadow: {
+              'luxury': '0 10px 40px -10px rgba(203, 168, 93, 0.12)',
+            }
+          },
+        },
+      }
+    </script>
+    <style>
+      .serif-heading { font-family: 'Noto Serif', serif; letter-spacing: 0.02em; }
+      .glass-nav { backdrop-filter: blur(10px); background: rgba(250, 248, 245, 0.8); }
+      .booking-bar-shadow { box-shadow: 0 20px 50px -12px rgba(203, 168, 93, 0.15); }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
