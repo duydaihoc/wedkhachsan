@@ -13,6 +13,18 @@ const AdminDashboard = () => {
   const [showModal, setShowModal] = useState(false)
   const [showRoomGrid, setShowRoomGrid] = useState(true)
   const [updatingStatus, setUpdatingStatus] = useState(false)
+  const [availableRooms, setAvailableRooms] = useState([])
+  const [showChangeRoomModal, setShowChangeRoomModal] = useState(false)
+  const [selectedNewRoom, setSelectedNewRoom] = useState('')
+  const [selectedBookingForChange, setSelectedBookingForChange] = useState(null)
+  const [checkingIn, setCheckingIn] = useState(null)
+  const [checkInError, setCheckInError] = useState('')
+  const [checkInSuccess, setCheckInSuccess] = useState('')
+  const [showCheckInConfirmModal, setShowCheckInConfirmModal] = useState(false)
+  const [pendingCheckIn, setPendingCheckIn] = useState(null)
+  const [earlierBookingInfo, setEarlierBookingInfo] = useState(null)
+  const [showRoomOccupiedModal, setShowRoomOccupiedModal] = useState(false)
+  const [roomOccupiedError, setRoomOccupiedError] = useState(null)
 
   useEffect(() => {
     fetchData()
@@ -86,6 +98,104 @@ const AdminDashboard = () => {
     })
     return booking
   }
+
+  const handleCheckIn = async (bookingId, e, force = false) => {
+    e?.stopPropagation() // Ngăn click event bubble lên div cha
+    if (!bookingId) return
+    
+    try {
+      setCheckingIn(bookingId)
+      setCheckInError('')
+      setCheckInSuccess('')
+      
+      await api.put(`/bookings/${bookingId}/status`, { 
+        status: 'checked-in',
+        force: force
+      })
+      
+      setCheckInSuccess('Đã nhận phòng thành công')
+      fetchData() // Refresh data
+      
+      setTimeout(() => {
+        setCheckInSuccess('')
+      }, 3000)
+    } catch (error) {
+      // Xử lý trường hợp có booking sớm hơn (409 Conflict)
+      if (error.response?.status === 409 && error.response?.data?.requiresConfirmation) {
+        setEarlierBookingInfo(error.response.data.earlierBooking)
+        setPendingCheckIn({ 
+          bookingId, 
+          currentBooking: error.response.data.currentBooking 
+        })
+        setShowCheckInConfirmModal(true)
+        setCheckingIn(null)
+        return
+      }
+      
+      // Xử lý trường hợp phòng đã được thuê (400 Bad Request)
+      if (error.response?.status === 400) {
+        const errorMessage = error.response?.data?.message || 'Không thể nhận phòng'
+        // Kiểm tra xem có phải lỗi phòng đã được thuê không
+        if (errorMessage.includes('đang được sử dụng') || 
+            errorMessage.includes('đã được thuê') || 
+            errorMessage.includes('đang được sử dụng bởi booking')) {
+          setRoomOccupiedError({
+            message: errorMessage,
+            bookingId: bookingId
+          })
+          setShowRoomOccupiedModal(true)
+          setCheckingIn(null)
+          return
+        }
+      }
+      
+      setCheckInError(error.response?.data?.message || 'Không thể nhận phòng')
+      setTimeout(() => {
+        setCheckInError('')
+      }, 5000)
+    } finally {
+      if (!showCheckInConfirmModal && !showRoomOccupiedModal) {
+        setCheckingIn(null)
+      }
+    }
+  }
+
+  const handleConfirmEarlyCheckIn = async () => {
+    if (!pendingCheckIn) return
+    
+    try {
+      setCheckingIn(pendingCheckIn.bookingId)
+      setShowCheckInConfirmModal(false)
+      
+      await api.put(`/bookings/${pendingCheckIn.bookingId}/status`, { 
+        status: 'checked-in',
+        force: true // Force check-in sau khi admin xác nhận
+      })
+      
+      setCheckInSuccess('Đã nhận phòng thành công')
+      fetchData() // Refresh data
+      
+      setTimeout(() => {
+        setCheckInSuccess('')
+      }, 3000)
+    } catch (error) {
+      setCheckInError(error.response?.data?.message || 'Không thể nhận phòng')
+      setTimeout(() => {
+        setCheckInError('')
+      }, 5000)
+    } finally {
+      setCheckingIn(null)
+      setPendingCheckIn(null)
+      setEarlierBookingInfo(null)
+    }
+  }
+
+  const handleCancelEarlyCheckIn = () => {
+    setShowCheckInConfirmModal(false)
+    setPendingCheckIn(null)
+    setEarlierBookingInfo(null)
+    setCheckingIn(null)
+  }
   const handleStatusChange = async (newStatus) => {
     if (!selectedRoom) return
     
@@ -107,6 +217,51 @@ const AdminDashboard = () => {
     } catch (error) {
       console.error('Lỗi cập nhật trạng thái:', error)
       alert('Không thể cập nhật trạng thái phòng')
+    } finally {
+      setUpdatingStatus(false)
+    }
+  }
+
+  const handleChangeRoomClick = async (booking) => {
+    try {
+      // Fetch available rooms (đã được tối ưu)
+      const response = await api.get(`/bookings/${booking._id}/available-rooms`)
+      setAvailableRooms(response.data)
+      setSelectedBookingForChange(booking)
+      setShowChangeRoomModal(true)
+    } catch (error) {
+      console.error('Không thể tải danh sách phòng:', error)
+      alert('Không thể tải danh sách phòng')
+    }
+  }
+
+  const handleChangeRoom = async () => {
+    if (!selectedNewRoom || !selectedBookingForChange) return
+    
+    try {
+      setUpdatingStatus(true)
+      const response = await api.put(`/bookings/${selectedBookingForChange._id}/change-room`, {
+        newRoomId: selectedNewRoom
+      })
+      
+      // Kiểm tra xem có hoàn tiền không
+      if (response.data.refundInfo) {
+        alert(`Đã đổi phòng thành công!\n\n${response.data.refundInfo.message}`)
+      } else {
+        alert('Đã đổi phòng thành công!')
+      }
+      
+      // Refresh data
+      await fetchData()
+      
+      // Close modal
+      setShowChangeRoomModal(false)
+      setShowModal(false)
+      setSelectedNewRoom('')
+      setSelectedBookingForChange(null)
+    } catch (error) {
+      console.error('Lỗi đổi phòng:', error)
+      alert(error.response?.data?.message || 'Không thể đổi phòng')
     } finally {
       setUpdatingStatus(false)
     }
@@ -235,132 +390,322 @@ const AdminDashboard = () => {
         </div>
 
         {showRoomGrid ? (
-          /* Room Status Grid */
-          <>
-            {/* Legend & Search */}
-            <div className="bg-white dark:bg-charcoal rounded-xl shadow-luxury border border-primary/10 p-6 mb-8">
-              <div className="flex flex-wrap items-center justify-between gap-4">
-                {/* Search */}
-                <div className="relative flex-1 max-w-md">
-                  <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-charcoal/40 dark:text-white/40">
-                    search
-                  </span>
-                  <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Tìm kiếm phòng..."
-                    className="w-full pl-10 pr-4 py-2.5 border border-charcoal/20 dark:border-white/20 rounded-lg bg-background-light dark:bg-background-dark text-charcoal dark:text-white focus:ring-2 focus:ring-primary focus:border-primary"
-                  />
-                </div>
+          /* Room Status Grid với danh sách booking kế tiếp */
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            {/* Sơ đồ phòng - 2 cột */}
+            <div className="lg:col-span-2">
+              {/* Legend & Search */}
+              <div className="bg-white dark:bg-charcoal rounded-xl shadow-luxury border border-primary/10 p-6 mb-8">
+                <div className="flex flex-wrap items-center justify-between gap-4">
+                  {/* Search */}
+                  <div className="relative flex-1 max-w-md">
+                    <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-charcoal/40 dark:text-white/40">
+                      search
+                    </span>
+                    <input
+                      type="text"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      placeholder="Tìm kiếm phòng..."
+                      className="w-full pl-10 pr-4 py-2.5 border border-charcoal/20 dark:border-white/20 rounded-lg bg-background-light dark:bg-background-dark text-charcoal dark:text-white focus:ring-2 focus:ring-primary focus:border-primary"
+                    />
+                  </div>
 
-                {/* Legend */}
-                <div className="flex flex-wrap items-center gap-6">
-                  <div className="flex items-center gap-2">
-                    <div className="w-4 h-4 rounded bg-green-100 border border-green-200"></div>
-                    <span className="text-xs font-bold uppercase tracking-wider text-charcoal/60 dark:text-white/60">
-                      Trống ({statusCounts.Available})
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="w-4 h-4 rounded bg-blue-100 border border-blue-200"></div>
-                    <span className="text-xs font-bold uppercase tracking-wider text-charcoal/60 dark:text-white/60">
-                      Có Khách ({statusCounts.Occupied})
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="w-4 h-4 rounded bg-amber-100 border border-amber-200"></div>
-                    <span className="text-xs font-bold uppercase tracking-wider text-charcoal/60 dark:text-white/60">
-                      Đang Dọn ({statusCounts.Dirty})
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="w-4 h-4 rounded bg-red-100 border border-red-200"></div>
-                    <span className="text-xs font-bold uppercase tracking-wider text-charcoal/60 dark:text-white/60">
-                      Bảo Trì ({statusCounts.Maintenance})
-                    </span>
-                  </div>
-                </div>
-
-                {/* Refresh */}
-                <button
-                  onClick={fetchData}
-                  className="p-2 text-primary hover:bg-primary/10 rounded-lg transition-colors"
-                  title="Làm mới"
-                >
-                  <span className="material-symbols-outlined">refresh</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Room Grid by Floor */}
-            {loading ? (
-              <div className="text-center py-20">
-                <div className="inline-block h-12 w-12 animate-spin rounded-full border-4 border-solid border-primary border-r-transparent"></div>
-                <p className="mt-4 text-charcoal/60 dark:text-white/60">Đang tải...</p>
-              </div>
-            ) : (
-              <div className="space-y-10">
-                {floorGroups.map(({ floor, rooms: floorRooms }) => (
-                  <section key={floor}>
-                    <div className="flex items-center gap-4 mb-4">
-                      <h3 className="serif-heading text-xl font-bold text-charcoal dark:text-white">
-                        {floor}
-                      </h3>
-                      <div className="h-px flex-1 bg-black/5 dark:bg-white/5"></div>
-                      <span className="text-xs text-charcoal/40 dark:text-white/40">
-                        {floorRooms.length} phòng
+                  {/* Legend */}
+                  <div className="flex flex-wrap items-center gap-6">
+                    <div className="flex items-center gap-2">
+                      <div className="w-4 h-4 rounded bg-green-100 border border-green-200"></div>
+                      <span className="text-xs font-bold uppercase tracking-wider text-charcoal/60 dark:text-white/60">
+                        Trống ({statusCounts.Available})
                       </span>
                     </div>
-                    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-4">
-                      {floorRooms.map((room) => {
-                        const statusInfo = getStatusInfo(room.status)
-                        const booking = getRoomBooking(room._id)
+                    <div className="flex items-center gap-2">
+                      <div className="w-4 h-4 rounded bg-blue-100 border border-blue-200"></div>
+                      <span className="text-xs font-bold uppercase tracking-wider text-charcoal/60 dark:text-white/60">
+                        Có Khách ({statusCounts.Occupied})
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-4 h-4 rounded bg-amber-100 border border-amber-200"></div>
+                      <span className="text-xs font-bold uppercase tracking-wider text-charcoal/60 dark:text-white/60">
+                        Đang Dọn ({statusCounts.Dirty})
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-4 h-4 rounded bg-red-100 border border-red-200"></div>
+                      <span className="text-xs font-bold uppercase tracking-wider text-charcoal/60 dark:text-white/60">
+                        Bảo Trì ({statusCounts.Maintenance})
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Refresh */}
+                  <button
+                    onClick={fetchData}
+                    className="p-2 text-primary hover:bg-primary/10 rounded-lg transition-colors"
+                    title="Làm mới"
+                  >
+                    <span className="material-symbols-outlined">refresh</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Room Grid by Floor */}
+              {loading ? (
+                <div className="text-center py-20">
+                  <div className="inline-block h-12 w-12 animate-spin rounded-full border-4 border-solid border-primary border-r-transparent"></div>
+                  <p className="mt-4 text-charcoal/60 dark:text-white/60">Đang tải...</p>
+                </div>
+              ) : (
+                <div className="space-y-10">
+                  {floorGroups.map(({ floor, rooms: floorRooms }) => (
+                    <section key={floor}>
+                      <div className="flex items-center gap-4 mb-4">
+                        <h3 className="serif-heading text-xl font-bold text-charcoal dark:text-white">
+                          {floor}
+                        </h3>
+                        <div className="h-px flex-1 bg-black/5 dark:bg-white/5"></div>
+                        <span className="text-xs text-charcoal/40 dark:text-white/40">
+                          {floorRooms.length} phòng
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+                        {floorRooms.map((room) => {
+                          const statusInfo = getStatusInfo(room.status)
+                          const booking = getRoomBooking(room._id)
+                          
+                          return (
+                            <div
+                              key={room._id}
+                              onClick={() => handleRoomClick(room)}
+                              className={`${statusInfo.bgColor} border ${statusInfo.borderColor} p-4 rounded-xl cursor-pointer transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5`}
+                            >
+                              <div className="flex justify-between items-start mb-1">
+                                <span className="text-sm font-bold text-charcoal dark:text-white">
+                                  {room.roomNumber}
+                                </span>
+                                <span className={`material-symbols-outlined ${statusInfo.iconColor} text-sm`}>
+                                  {statusInfo.icon}
+                                </span>
+                              </div>
+                              <p className={`text-[10px] font-bold ${statusInfo.textColor} uppercase tracking-tight mb-1`}>
+                                {statusInfo.label}
+                              </p>
+                              {booking && (
+                                <div className={`text-[9px] ${statusInfo.textColor} space-y-0.5 mt-2 pt-2 border-t ${statusInfo.borderColor}`}>
+                                  <div className="flex items-center gap-1">
+                                    <span className="material-symbols-outlined text-[10px]">login</span>
+                                    <span className="font-medium">Nhận: {formatDateTime(booking.checkInDate, booking.checkInTime)}</span>
+                                  </div>
+                                  <div className="flex items-center gap-1">
+                                    <span className="material-symbols-outlined text-[10px]">logout</span>
+                                    <span className="font-medium">Trả: {formatDateTime(booking.checkOutDate, booking.checkOutTime)}</span>
+                                  </div>
+                                  {booking.user && (
+                                    <div className="flex items-center gap-1 mt-1">
+                                      <span className="material-symbols-outlined text-[10px]">person</span>
+                                      <span className="truncate">{booking.user.fullName || booking.user.username}</span>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </section>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Danh sách booking kế tiếp - 1 cột */}
+            <div className="lg:col-span-1">
+              <div className="bg-white dark:bg-charcoal rounded-xl shadow-luxury border border-primary/10 p-6 sticky top-24">
+                <div className="flex items-center justify-between mb-6">
+                  <h3 className="serif-heading text-xl font-bold text-charcoal dark:text-white">
+                    Booking Kế Tiếp
+                  </h3>
+                  <span className="material-symbols-outlined text-primary">schedule</span>
+                </div>
+                
+                {(() => {
+                  // Lấy các booking sẽ nhận phòng (loại bỏ đã hoàn thành và đã trả phòng)
+                  const now = new Date()
+                  const next24Hours = new Date(now.getTime() + 24 * 60 * 60 * 1000)
+                  
+                  const upcomingBookings = bookings
+                    .filter(booking => {
+                      // Loại bỏ các booking đã hoàn thành hoặc đã trả phòng
+                      if (['completed', 'checked-out', 'cancelled'].includes(booking.status)) {
+                        return false
+                      }
+                      
+                      if (!booking.checkInDate) return false
+                      const checkInDate = new Date(booking.checkInDate)
+                      const checkInDateTime = new Date(`${checkInDate.toISOString().split('T')[0]}T${booking.checkInTime || '00:00'}`)
+                      
+                      // Chỉ lấy các booking sẽ nhận phòng:
+                      // - Đã checked-in (đang ở phòng, chưa trả)
+                      // - Hoặc check-in trong tương lai (pending, confirmed, payment-pending)
+                      return (
+                        booking.status === 'checked-in' || // Đã nhận phòng, chưa trả
+                        (['pending', 'confirmed', 'payment-pending'].includes(booking.status) && checkInDateTime >= now)
+                      )
+                    })
+                    .sort((a, b) => {
+                      const dateA = new Date(`${new Date(a.checkInDate).toISOString().split('T')[0]}T${a.checkInTime || '00:00'}`)
+                      const dateB = new Date(`${new Date(b.checkInDate).toISOString().split('T')[0]}T${b.checkInTime || '00:00'}`)
+                      return dateA - dateB
+                    })
+                    .slice(0, 10) // Chỉ lấy 10 booking gần nhất
+
+                  if (upcomingBookings.length === 0) {
+                    return (
+                      <div className="text-center py-8">
+                        <span className="material-symbols-outlined text-4xl text-charcoal/20 dark:text-white/20 mb-2">event_busy</span>
+                        <p className="text-sm text-charcoal/60 dark:text-white/60">Không có booking sắp tới</p>
+                      </div>
+                    )
+                  }
+
+                  return (
+                    <div className="space-y-3 max-h-[calc(100vh-250px)] overflow-y-auto">
+                      {upcomingBookings.map((booking) => {
+                        const checkInDate = new Date(booking.checkInDate)
+                        const checkInDateTime = new Date(`${checkInDate.toISOString().split('T')[0]}T${booking.checkInTime || '00:00'}`)
+                        const isToday = checkInDate.toDateString() === now.toDateString()
+                        const isSoon = checkInDateTime <= new Date(now.getTime() + 2 * 60 * 60 * 1000) // Trong 2 giờ tới
                         
+                        const getStatusBadge = (status) => {
+                          if (status === 'checked-in') return { text: 'Đã Nhận', color: 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400' }
+                          if (status === 'confirmed') return { text: 'Đã Xác Nhận', color: 'bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400' }
+                          if (status === 'pending') return { text: 'Chờ Xác Nhận', color: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400' }
+                          if (status === 'payment-pending') return { text: 'Chờ Thanh Toán', color: 'bg-orange-100 text-orange-800 dark:bg-orange-900/20 dark:text-orange-400' }
+                          return { text: status, color: 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-400' }
+                        }
+                        
+                        const statusBadge = getStatusBadge(booking.status)
+
                         return (
                           <div
-                            key={room._id}
-                            onClick={() => handleRoomClick(room)}
-                            className={`${statusInfo.bgColor} border ${statusInfo.borderColor} p-4 rounded-xl cursor-pointer transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5`}
+                            key={booking._id}
+                            className={`p-4 rounded-lg border transition-all hover:shadow-md cursor-pointer ${
+                              isSoon 
+                                ? 'bg-primary/5 border-primary/30 dark:bg-primary/10' 
+                                : 'bg-background-light dark:bg-background-dark border-charcoal/10 dark:border-white/10'
+                            }`}
+                            onClick={() => {
+                              setSelectedRoom(booking.room)
+                              setShowModal(true)
+                            }}
                           >
-                            <div className="flex justify-between items-start mb-1">
-                              <span className="text-sm font-bold text-charcoal dark:text-white">
-                                {room.roomNumber}
-                              </span>
-                              <span className={`material-symbols-outlined ${statusInfo.iconColor} text-sm`}>
-                                {statusInfo.icon}
+                            <div className="flex items-start justify-between mb-2">
+                              <div className="flex-1">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <span className="text-sm font-bold text-charcoal dark:text-white">
+                                    Phòng {booking.room?.roomNumber || 'N/A'}
+                                  </span>
+                                  {isSoon && (
+                                    <span className="material-symbols-outlined text-primary text-sm animate-pulse">schedule</span>
+                                  )}
+                                </div>
+                                <p className="text-xs text-charcoal/60 dark:text-white/60 mb-2">
+                                  {booking.user?.fullName || booking.user?.username || 'Khách'}
+                                </p>
+                              </div>
+                              <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${statusBadge.color}`}>
+                                {statusBadge.text}
                               </span>
                             </div>
-                            <p className={`text-[10px] font-bold ${statusInfo.textColor} uppercase tracking-tight mb-1`}>
-                              {statusInfo.label}
-                            </p>
-                            {booking && (
-                              <div className={`text-[9px] ${statusInfo.textColor} space-y-0.5 mt-2 pt-2 border-t ${statusInfo.borderColor}`}>
-                                <div className="flex items-center gap-1">
-                                  <span className="material-symbols-outlined text-[10px]">login</span>
-                                  <span className="font-medium">Nhận: {formatDateTime(booking.checkInDate, booking.checkInTime)}</span>
-                                </div>
-                                <div className="flex items-center gap-1">
-                                  <span className="material-symbols-outlined text-[10px]">logout</span>
-                                  <span className="font-medium">Trả: {formatDateTime(booking.checkOutDate, booking.checkOutTime)}</span>
-                                </div>
-                                {booking.user && (
-                                  <div className="flex items-center gap-1 mt-1">
-                                    <span className="material-symbols-outlined text-[10px]">person</span>
-                                    <span className="truncate">{booking.user.fullName || booking.user.username}</span>
-                                  </div>
-                                )}
+                            
+                            <div className="space-y-1 text-xs">
+                              <div className="flex items-center gap-2">
+                                <span className="material-symbols-outlined text-primary text-sm">login</span>
+                                <span className="text-charcoal dark:text-white">
+                                  <span className="font-medium">
+                                    {isToday ? 'Hôm nay' : new Date(booking.checkInDate).toLocaleDateString('vi-VN', { 
+                                      day: '2-digit', 
+                                      month: '2-digit', 
+                                      year: 'numeric' 
+                                    })}
+                                  </span>
+                                  {' '}
+                                  <span className="text-charcoal/60 dark:text-white/60">{booking.checkInTime}</span>
+                                </span>
                               </div>
-                            )}
+                              <div className="flex items-center gap-2">
+                                <span className="material-symbols-outlined text-primary text-sm">logout</span>
+                                <span className="text-charcoal dark:text-white">
+                                  <span className="font-medium">
+                                    {new Date(booking.checkOutDate).toLocaleDateString('vi-VN', { 
+                                      day: '2-digit', 
+                                      month: '2-digit', 
+                                      year: 'numeric' 
+                                    })}
+                                  </span>
+                                  {' '}
+                                  <span className="text-charcoal/60 dark:text-white/60">{booking.checkOutTime}</span>
+                                </span>
+                              </div>
+                              {booking.bookingCode && (
+                                <div className="flex items-center gap-2 mt-2 pt-2 border-t border-charcoal/5 dark:border-white/5">
+                                  <span className="material-symbols-outlined text-primary text-sm">confirmation_number</span>
+                                  <span className="font-mono text-[10px] text-charcoal/60 dark:text-white/60">
+                                    {booking.bookingCode}
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                            
+                            {/* Nút Nhận Phòng */}
+                            {(() => {
+                              // Hiển thị nút nhận phòng khi:
+                              // - Booking online: status = 'confirmed' và bookingConfirmed = true
+                              // - Booking cash: status = 'confirmed'
+                              const canCheckIn = booking.status === 'confirmed' && 
+                                (booking.paymentMethod === 'cash' || 
+                                 (booking.paymentMethod === 'online' && booking.bookingConfirmed))
+                              
+                              if (!canCheckIn) return null
+                              
+                              return (
+                                <div className="mt-3 pt-3 border-t border-charcoal/10 dark:border-white/10">
+                                  {checkInError && checkingIn === booking._id && (
+                                    <p className="text-xs text-red-600 dark:text-red-400 mb-2">{checkInError}</p>
+                                  )}
+                                  {checkInSuccess && checkingIn === booking._id && (
+                                    <p className="text-xs text-green-600 dark:text-green-400 mb-2">{checkInSuccess}</p>
+                                  )}
+                                  <button
+                                    onClick={(e) => handleCheckIn(booking._id, e)}
+                                    disabled={checkingIn === booking._id}
+                                    className="w-full py-2 px-3 bg-primary hover:bg-primary/90 text-white rounded-lg text-xs font-bold uppercase tracking-wider transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                                  >
+                                    {checkingIn === booking._id ? (
+                                      <>
+                                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                        <span>Đang xử lý...</span>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <span className="material-symbols-outlined text-sm">login</span>
+                                        <span>Nhận Phòng</span>
+                                      </>
+                                    )}
+                                  </button>
+                                </div>
+                              )
+                            })()}
                           </div>
                         )
                       })}
                     </div>
-                  </section>
-                ))}
+                  )
+                })()}
               </div>
-            )}
-          </>
+            </div>
+          </div>
         ) : (
           /* Management Dashboard */
           <>
@@ -828,8 +1173,290 @@ const AdminDashboard = () => {
                       </Link>
                     </div>
                   )}
+
+                  {/* Change Room Button - Only show for Available rooms */}
+                  {selectedRoom.status === 'Available' && (() => {
+                    // Tìm booking của phòng này
+                    const roomBooking = bookings.find(b => 
+                      (b.room?._id === selectedRoom._id || b.room === selectedRoom._id) &&
+                      ['confirmed', 'checked-in'].includes(b.status)
+                    )
+                    
+                    if (roomBooking) {
+                      return (
+                        <div className="mt-4 pt-4 border-t border-primary/10">
+                          <button
+                            onClick={() => handleChangeRoomClick(roomBooking)}
+                            className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold uppercase tracking-widest transition-all flex items-center justify-center gap-2"
+                          >
+                            <span className="material-symbols-outlined text-sm">swap_horiz</span>
+                            Đổi Phòng Cho Booking Này
+                          </button>
+                        </div>
+                      )
+                    }
+                    return null
+                  })()}
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Change Room Modal */}
+      {showChangeRoomModal && selectedBookingForChange && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-charcoal rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden">
+            {/* Modal Header */}
+            <div className="p-6 border-b border-primary/10 flex justify-between items-center">
+              <div>
+                <h4 className="font-bold text-xl text-charcoal dark:text-white mb-1">
+                  Đổi Phòng
+                </h4>
+                <p className="text-xs text-charcoal/60 dark:text-white/60">
+                  Booking: {selectedBookingForChange.bookingCode}
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setShowChangeRoomModal(false)
+                  setSelectedNewRoom('')
+                  setSelectedBookingForChange(null)
+                }}
+                className="size-8 rounded-full hover:bg-charcoal/10 dark:hover:bg-white/10 flex items-center justify-center transition-colors"
+              >
+                <span className="material-symbols-outlined text-charcoal/60 dark:text-white/60">close</span>
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-6">
+              <div className="mb-6 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+                <p className="text-sm text-blue-800 dark:text-blue-300 flex items-start gap-2">
+                  <span className="material-symbols-outlined text-base">info</span>
+                  <span>
+                    <strong>Phòng hiện tại:</strong> Phòng {selectedRoom?.roomNumber}<br/>
+                    <strong>Khách:</strong> {selectedBookingForChange.user?.fullName || selectedBookingForChange.user?.username}
+                  </span>
+                </p>
+              </div>
+
+              <div className="mb-4">
+                <label className="block text-xs font-bold uppercase tracking-widest text-charcoal/60 dark:text-white/60 mb-2">
+                  Chọn Phòng Mới
+                </label>
+                <select
+                  value={selectedNewRoom}
+                  onChange={(e) => setSelectedNewRoom(e.target.value)}
+                  className="w-full px-4 py-3 border border-charcoal/20 dark:border-white/20 rounded-lg bg-background-light dark:bg-background-dark text-charcoal dark:text-white focus:ring-2 focus:ring-primary focus:border-primary"
+                  disabled={updatingStatus}
+                >
+                  <option value="">-- Chọn phòng (đã được tối ưu) --</option>
+                  {availableRooms.map((room, index) => (
+                    <option key={room._id} value={room._id}>
+                      {index === 0 && '⭐ '}
+                      Phòng {room.roomNumber} - {room.type?.name} - {room.category?.name} - {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(room.estimatedPrice || room.price?.daily || 0)}
+                      {room.status === 'Available' ? ' (Sẵn sàng)' : ' (Cần dọn)'}
+                    </option>
+                  ))}
+                </select>
+                {availableRooms.length === 0 && (
+                  <p className="text-xs text-red-600 dark:text-red-400 mt-2">
+                    Không có phòng trống nào khả dụng
+                  </p>
+                )}
+              </div>
+
+              {selectedNewRoom && (
+                <div className="p-4 bg-amber-50 dark:bg-amber-900/20 rounded-lg">
+                  <p className="text-sm text-amber-800 dark:text-amber-300 flex items-start gap-2">
+                    <span className="material-symbols-outlined text-base">warning</span>
+                    <span>
+                      Giá phòng và tổng tiền sẽ được tính lại tự động dựa trên giá phòng mới.
+                      Số tiền còn lại cũng sẽ được cập nhật.
+                    </span>
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-6 border-t border-primary/10 flex gap-3">
+              <button
+                onClick={() => {
+                  setShowChangeRoomModal(false)
+                  setSelectedNewRoom('')
+                  setSelectedBookingForChange(null)
+                }}
+                disabled={updatingStatus}
+                className="flex-1 bg-charcoal/10 hover:bg-charcoal/20 dark:bg-white/10 dark:hover:bg-white/20 text-charcoal dark:text-white py-3 rounded-lg text-xs font-bold uppercase tracking-widest transition-all disabled:opacity-50"
+              >
+                Hủy
+              </button>
+              <button
+                onClick={handleChangeRoom}
+                disabled={!selectedNewRoom || updatingStatus}
+                className="flex-1 bg-primary hover:bg-primary/90 text-white py-3 rounded-lg text-xs font-bold uppercase tracking-widest transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {updatingStatus ? 'Đang Xử Lý...' : 'Xác Nhận Đổi Phòng'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Xác Nhận Check-in Sớm */}
+      {showCheckInConfirmModal && earlierBookingInfo && pendingCheckIn && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[70] flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-charcoal rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
+            {/* Modal Header */}
+            <div className="p-6 border-b border-primary/10">
+              <div className="flex items-center gap-3 mb-2">
+                <div className="size-12 bg-yellow-100 dark:bg-yellow-900/20 rounded-lg flex items-center justify-center">
+                  <span className="material-symbols-outlined text-yellow-600 dark:text-yellow-400 text-2xl">warning</span>
+                </div>
+                <div>
+                  <h4 className="font-bold text-xl text-charcoal dark:text-white">
+                    Cảnh Báo
+                  </h4>
+                  <p className="text-xs text-charcoal/60 dark:text-white/60">
+                    Có booking sớm hơn chưa nhận phòng
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-6">
+              <div className="mb-4 p-4 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg border border-yellow-200 dark:border-yellow-800">
+                <p className="text-sm text-yellow-800 dark:text-yellow-300 mb-3">
+                  Có một booking khác ở cùng phòng với thời gian check-in <strong>sớm hơn</strong> nhưng <strong>chưa nhận phòng</strong>:
+                </p>
+                
+                <div className="space-y-2 text-sm">
+                  <div className="flex items-start gap-2">
+                    <span className="material-symbols-outlined text-yellow-600 dark:text-yellow-400 text-sm mt-0.5">confirmation_number</span>
+                    <div>
+                      <span className="font-medium text-charcoal dark:text-white">Mã Booking:</span>
+                      <span className="ml-2 font-mono text-yellow-800 dark:text-yellow-300">{earlierBookingInfo.bookingCode}</span>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-start gap-2">
+                    <span className="material-symbols-outlined text-yellow-600 dark:text-yellow-400 text-sm mt-0.5">person</span>
+                    <div>
+                      <span className="font-medium text-charcoal dark:text-white">Khách hàng:</span>
+                      <span className="ml-2 text-yellow-800 dark:text-yellow-300">{earlierBookingInfo.guestName}</span>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-start gap-2">
+                    <span className="material-symbols-outlined text-yellow-600 dark:text-yellow-400 text-sm mt-0.5">schedule</span>
+                    <div>
+                      <span className="font-medium text-charcoal dark:text-white">Check-in:</span>
+                      <span className="ml-2 text-yellow-800 dark:text-yellow-300">{earlierBookingInfo.checkInDisplay}</span>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-start gap-2 mt-3 pt-3 border-t border-yellow-200 dark:border-yellow-800">
+                    <span className="material-symbols-outlined text-primary text-sm mt-0.5">login</span>
+                    <div>
+                      <span className="font-medium text-charcoal dark:text-white">Booking hiện tại check-in:</span>
+                      <span className="ml-2 text-primary font-medium">{pendingCheckIn.currentBooking.checkInDisplay}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+                <p className="text-sm text-blue-800 dark:text-blue-300">
+                  <strong>Bạn có muốn cho booking này nhận phòng sớm không?</strong>
+                  <br />
+                  <span className="text-xs mt-1 block">Booking sớm hơn vẫn chưa nhận phòng, bạn có thể cho booking này nhận phòng trước.</span>
+                </p>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-6 border-t border-primary/10 flex gap-3">
+              <button
+                onClick={handleCancelEarlyCheckIn}
+                disabled={checkingIn === pendingCheckIn?.bookingId}
+                className="flex-1 bg-charcoal/10 hover:bg-charcoal/20 dark:bg-white/10 dark:hover:bg-white/20 text-charcoal dark:text-white py-3 rounded-lg text-xs font-bold uppercase tracking-widest transition-all disabled:opacity-50"
+              >
+                Hủy
+              </button>
+              <button
+                onClick={handleConfirmEarlyCheckIn}
+                disabled={checkingIn === pendingCheckIn?.bookingId}
+                className="flex-1 bg-primary hover:bg-primary/90 text-white py-3 rounded-lg text-xs font-bold uppercase tracking-widest transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              >
+                {checkingIn === pendingCheckIn?.bookingId ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    <span>Đang xử lý...</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="material-symbols-outlined text-sm">check_circle</span>
+                    <span>Xác Nhận Nhận Phòng</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Cảnh Báo Phòng Đã Được Thuê */}
+      {showRoomOccupiedModal && roomOccupiedError && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[70] flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-charcoal rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
+            {/* Modal Header */}
+            <div className="p-6 border-b border-primary/10">
+              <div className="flex items-center gap-3 mb-2">
+                <div className="size-12 bg-red-100 dark:bg-red-900/20 rounded-lg flex items-center justify-center">
+                  <span className="material-symbols-outlined text-red-600 dark:text-red-400 text-2xl">error</span>
+                </div>
+                <div>
+                  <h4 className="font-bold text-xl text-charcoal dark:text-white">
+                    Phòng Đã Được Thuê
+                  </h4>
+                  <p className="text-xs text-charcoal/60 dark:text-white/60">
+                    Không thể nhận phòng
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-6">
+              <div className="mb-4 p-4 bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-200 dark:border-red-800">
+                <p className="text-sm text-red-800 dark:text-red-300">
+                  {roomOccupiedError.message}
+                </p>
+              </div>
+
+              <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+                <p className="text-sm text-blue-800 dark:text-blue-300">
+                  <strong>Lưu ý:</strong> Vui lòng đợi khách hàng hiện tại trả phòng (check-out) trước khi cho booking khác nhận phòng.
+                </p>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-6 border-t border-primary/10 flex justify-end">
+              <button
+                onClick={() => {
+                  setShowRoomOccupiedModal(false)
+                  setRoomOccupiedError(null)
+                  setCheckingIn(null)
+                }}
+                className="px-6 py-3 bg-primary hover:bg-primary/90 text-white rounded-lg text-xs font-bold uppercase tracking-widest transition-all"
+              >
+                Đã Hiểu
+              </button>
             </div>
           </div>
         </div>

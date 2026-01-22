@@ -117,6 +117,13 @@ const bookingSchema = new mongoose.Schema({
     default: 'cash'
   },
 
+  // Chi tiết phương thức thanh toán (cash hoặc qr)
+  paymentMethodDetail: {
+    type: String,
+    enum: ['cash', 'qr', 'pending'],
+    default: 'pending'
+  },
+
   // Số tiền đã thanh toán
   paidAmount: {
     type: Number,
@@ -125,6 +132,12 @@ const bookingSchema = new mongoose.Schema({
 
   // Số tiền còn lại
   remainingAmount: {
+    type: Number,
+    default: 0
+  },
+
+  // Số tiền hoàn lại (khi đổi phòng rẻ hơn)
+  refundAmount: {
     type: Number,
     default: 0
   },
@@ -146,8 +159,14 @@ const bookingSchema = new mongoose.Schema({
   // =========================================================
   status: {
     type: String,
-    enum: ['pending', 'confirmed', 'checked-in', 'checked-out', 'completed', 'cancelled'],
+    enum: ['payment-pending', 'pending', 'confirmed', 'checked-in', 'checked-out', 'completed', 'cancelled'],
     default: 'pending'
+  },
+
+  // Đã xác nhận booking bởi admin (sau khi đã xác nhận thanh toán)
+  bookingConfirmed: {
+    type: Boolean,
+    default: false
   },
 
   // Ghi chú

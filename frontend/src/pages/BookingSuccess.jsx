@@ -2,7 +2,9 @@ import { useState, useEffect } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import api from '../services/api'
+import socket from '../services/socket'
 import BookingHeader from '../components/BookingHeader'
+import ImageWithFallback from '../components/ImageWithFallback'
 
 const BookingSuccess = () => {
   const { id } = useParams()
@@ -19,12 +21,33 @@ const BookingSuccess = () => {
     }
 
     fetchBooking()
-  }, [id])
+
+    // Không cần socket cho trang success vì đây là trang hoàn tất
+    // Chỉ cần fetch booking khi reload trang
+  }, [id, user, navigate])
+
+  const checkAndRedirect = (bookingData) => {
+    // Nếu booking chưa được xác nhận, chuyển đến trang tương ứng
+    if (bookingData.status === 'payment-pending') {
+      window.location.replace(`/booking/payment-pending/${id}`)
+    } else if (bookingData.status === 'pending' && bookingData.paymentMethod === 'online') {
+      window.location.replace(`/booking/payment-pending/${id}`)
+    } else if (bookingData.status === 'confirmed' && bookingData.paymentMethod === 'online' && !bookingData.bookingConfirmed) {
+      // Chỉ chuyển nếu chưa xác nhận booking, nếu đã xác nhận thì ở lại trang success
+      window.location.replace(`/booking/confirmation-pending/${id}`)
+    }
+    // Nếu bookingConfirmed = true hoặc đã check-in, ở lại trang success (không chuyển nữa)
+    // Check-in là tác vụ riêng của admin, không ảnh hưởng đến trang user
+  }
 
   const fetchBooking = async () => {
     try {
       const response = await api.get(`/bookings/${id}`)
-      setBooking(response.data)
+      const bookingData = response.data
+      setBooking(bookingData)
+      
+      // Kiểm tra và chuyển hướng nếu booking chưa ở trạng thái hoàn tất
+      checkAndRedirect(bookingData)
     } catch (error) {
       setError('Không thể tải thông tin đặt phòng')
       console.error(error)
@@ -68,16 +91,27 @@ const BookingSuccess = () => {
   }
 
   const getRoomImage = () => {
+    // Ưu tiên ảnh đại diện
     if (booking?.room?.image) {
       return `http://localhost:5000${booking.room.image}`
     }
+    // Nếu không có, lấy ảnh đầu tiên từ mảng images
     if (booking?.room?.images && booking.room.images.length > 0) {
-      return `http://localhost:5000${booking.room.images[0]}`
+      const firstImage = booking.room.images[0]
+      // Nếu là object (định dạng mới), lấy url
+      if (typeof firstImage === 'object' && firstImage.url) {
+        return `http://localhost:5000${firstImage.url}`
+      }
+      // Nếu là string (định dạng cũ), dùng trực tiếp
+      if (typeof firstImage === 'string') {
+        return `http://localhost:5000${firstImage}`
+      }
     }
+    // Nếu không có ảnh, dùng ảnh từ room type
     if (booking?.room?.type?.image) {
       return `http://localhost:5000${booking.room.type.image}`
     }
-    return 'https://via.placeholder.com/400x300?text=Room+Image'
+    return null // Trả về null thay vì placeholder URL
   }
 
   const handleDownloadReceipt = () => {
@@ -167,10 +201,11 @@ const BookingSuccess = () => {
               {/* Room Info */}
               <div className="flex flex-col md:flex-row gap-8 pb-8 border-b border-black/5">
                 <div className="w-full md:w-48 h-32 rounded-lg overflow-hidden shrink-0">
-                  <img 
-                    alt={roomName} 
-                    className="w-full h-full object-cover" 
+                  <ImageWithFallback
                     src={getRoomImage()}
+                    alt={roomName}
+                    className="w-full h-full object-cover"
+                    fallbackIcon="bed"
                   />
                 </div>
                 <div className="flex-grow">

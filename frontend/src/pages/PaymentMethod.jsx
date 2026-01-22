@@ -57,8 +57,8 @@ const PaymentMethod = () => {
         sessionStorage.setItem('bookingId', response.data._id)
         navigate('/booking/online-payment')
       } else {
-        // Thanh toán tại quầy: hiển thị mã booking
-        navigate(`/booking/success/${response.data._id}`)
+        // Thanh toán tại quầy: chuyển đến trang đợi xác nhận booking (không có bước xác nhận tiền)
+        navigate(`/booking/confirmation-pending/${response.data._id}`)
       }
     } catch (error) {
       setError(error.response?.data?.message || 'Không thể tạo đặt phòng')

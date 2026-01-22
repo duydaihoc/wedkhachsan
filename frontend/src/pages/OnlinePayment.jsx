@@ -102,12 +102,19 @@ const OnlinePayment = () => {
       return
     }
 
-    // Giả lập thanh toán online (trong thực tế sẽ gọi API thanh toán)
-    setTimeout(() => {
-      // Sau khi thanh toán thành công, chuyển đến trang thành công
+    try {
+      // Giả lập thanh toán online (trong thực tế sẽ gọi API thanh toán)
+      // Sau khi thanh toán thành công, xác nhận với backend
+      await api.put(`/bookings/${bookingId}/user-confirm-payment`)
+      
+      // Sau khi xác nhận thành công, chuyển đến trang đợi xác nhận thanh toán
       sessionStorage.removeItem('bookingId')
-      navigate(`/booking/success/${bookingId}`)
-    }, 2000)
+      navigate(`/booking/payment-pending/${bookingId}`)
+    } catch (error) {
+      console.error('Lỗi xác nhận thanh toán:', error)
+      setError(error.response?.data?.message || 'Không thể xác nhận thanh toán')
+      setLoading(false)
+    }
   }
 
   if (!booking) {
@@ -246,36 +253,36 @@ const OnlinePayment = () => {
 
           {/* Right - Payment Summary */}
           <div className="lg:col-span-1">
-            <div className="sticky top-32 bg-white dark:bg-background-dark rounded-2xl shadow-xl shadow-black/5 p-8 border border-black/10 dark:border-white/10">
-              <h3 className="text-xl font-display mb-6 pb-4 border-b border-black/5 dark:border-white/5">Chi Tiết Thanh Toán</h3>
+            <div className="sticky top-32 bg-white dark:bg-background-dark rounded-2xl shadow-xl shadow-black/5 py-10 px-8 lg:py-14 lg:px-12 border border-black/10 dark:border-white/10 overflow-hidden w-full min-w-[380px] lg:min-w-[520px] max-w-[600px]">
+              <h3 className="text-xl font-display mb-8 pb-6 border-b border-black/5 dark:border-white/5">Chi Tiết Thanh Toán</h3>
               
-              <div className="space-y-4 mb-6">
-                <div className="flex justify-between text-sm">
-                  <span className="opacity-60">Tổng giá trị booking</span>
-                  <span className="font-medium">{formatPrice(booking.totalPrice)}</span>
+              <div className="space-y-8 mb-10">
+                <div className="flex justify-between items-start text-sm gap-10">
+                  <span className="opacity-60 flex-shrink-0 leading-relaxed">Tổng giá trị booking</span>
+                  <span className="font-medium text-right whitespace-nowrap">{formatPrice(booking.totalPrice)}</span>
                 </div>
                 
-                <div className="flex justify-between text-sm">
-                  <span className="opacity-60">Đặt cọc (30%)</span>
-                  <span className="font-medium text-primary">{formatPrice(depositAmount)}</span>
+                <div className="flex justify-between items-start text-sm gap-10">
+                  <span className="opacity-60 flex-shrink-0 leading-relaxed">Đặt cọc (30%)</span>
+                  <span className="font-medium text-primary text-right whitespace-nowrap">{formatPrice(depositAmount)}</span>
                 </div>
 
-                <div className="pt-4 border-t border-black/5 dark:border-white/5">
-                  <div className="flex justify-between items-baseline mb-4">
-                    <span className="text-lg font-display">Thanh Toán Ngay</span>
+                <div className="pt-8 border-t border-black/5 dark:border-white/5">
+                  <div className="flex justify-between items-baseline mb-6 gap-10">
+                    <span className="text-lg lg:text-xl font-display flex-shrink-0">Thanh Toán Ngay</span>
                     <div className="text-right">
-                      <span className="text-3xl font-display font-bold text-primary block">
+                      <span className="text-3xl lg:text-4xl font-display font-bold text-primary block whitespace-nowrap">
                         {formatPrice(depositAmount)}
                       </span>
                     </div>
                   </div>
-                  <p className="text-xs opacity-60">
-                    Số tiền còn lại: {formatPrice(booking.totalPrice - depositAmount)} sẽ thanh toán khi nhận phòng
+                  <p className="text-xs opacity-60 leading-relaxed">
+                    Số tiền còn lại: <span className="whitespace-nowrap font-medium">{formatPrice(booking.totalPrice - depositAmount)}</span> sẽ thanh toán khi nhận phòng
                   </p>
                 </div>
               </div>
 
-              <div className="bg-background-light dark:bg-white/5 rounded-lg p-4 border border-black/5 dark:border-white/5">
+              <div className="bg-background-light dark:bg-white/5 rounded-lg p-5 border border-black/5 dark:border-white/5 mt-8">
                 <div className="flex items-start gap-3">
                   <span className="material-symbols-outlined text-primary text-xl flex-shrink-0">verified</span>
                   <div>

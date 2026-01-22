@@ -11,6 +11,8 @@ const RoomDetail = () => {
   const [services, setServices] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [roomBookings, setRoomBookings] = useState([])
+  const [showBookingSchedule, setShowBookingSchedule] = useState(false)
   
   // Booking states
   const [bookingType, setBookingType] = useState('daily') // 'hourly', 'overnight', 'daily'
@@ -23,10 +25,12 @@ const RoomDetail = () => {
   const [selectedServices, setSelectedServices] = useState([])
   const [adults, setAdults] = useState(1)
   const [children, setChildren] = useState(0)
+  const [timeConflictWarning, setTimeConflictWarning] = useState('')
 
   useEffect(() => {
     fetchRoomDetail()
     fetchServices()
+    fetchRoomBookings()
   }, [id])
 
   // Tự động set số khách từ loại phòng khi room được load
@@ -67,9 +71,10 @@ const RoomDetail = () => {
       const checkInHours = parseInt(hoursStr, 10)
       const checkInMinutes = parseInt(minutesStr, 10)
       
-      // Tạo Date object từ checkIn và checkInTime
-      const checkInDateTime = new Date(checkIn)
-      checkInDateTime.setHours(checkInHours, checkInMinutes, 0, 0)
+      // Tạo Date object từ checkIn và checkInTime (đúng local timezone)
+      // Tạo Date ở local timezone để tránh timezone issues
+      const [year, month, day] = checkIn.split('-').map(Number)
+      const checkInDateTime = new Date(year, month - 1, day, checkInHours, checkInMinutes, 0, 0)
       
       // Thêm số giờ vào checkInDateTime
       const checkOutDateTime = new Date(checkInDateTime)
@@ -111,6 +116,26 @@ const RoomDetail = () => {
       setServices(availableServices)
     } catch (error) {
       console.error('Không thể tải danh sách dịch vụ:', error)
+    }
+  }
+
+  const fetchRoomBookings = async () => {
+    try {
+      // Lấy bookings của phòng này trong 7 ngày tới
+      const startDate = new Date().toISOString().split('T')[0]
+      const endDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+      
+      const response = await api.get('/bookings/public/room-schedule', {
+        params: {
+          roomId: id,
+          startDate,
+          endDate
+        }
+      })
+      setRoomBookings(response.data)
+    } catch (error) {
+      console.error('Không thể tải lịch đặt phòng:', error)
+      // Không cần đăng nhập, có thể xem lịch đặt phòng công khai
     }
   }
 
@@ -212,6 +237,219 @@ const RoomDetail = () => {
     })
   }
 
+  // Lấy danh sách bookings trong 7 ngày
+  const getUpcomingBookings = () => {
+    const today = new Date().toISOString().split('T')[0]
+    const next7Days = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+    
+    return roomBookings
+      .filter(booking => {
+        const checkInDate = new Date(booking.checkInDate).toISOString().split('T')[0]
+        return checkInDate >= today && checkInDate < next7Days
+      })
+      .map(booking => ({
+        start: `${new Date(booking.checkInDate).toLocaleDateString('vi-VN')} ${booking.checkInTime}`,
+        end: `${new Date(booking.checkOutDate).toLocaleDateString('vi-VN')} ${booking.checkOutTime}`
+      }))
+  }
+
+  // Tìm tất cả khung giờ còn trống trong 7 ngày tới
+  const findAllAvailableSlots = () => {
+    const availableSlots = []
+    const activeBookings = roomBookings.filter(b => 
+      ['pending', 'confirmed', 'checked-in', 'payment-pending'].includes(b.status)
+    )
+    
+    // Helper function để so sánh thời gian
+    const compareTime = (time1, time2) => {
+      const [h1, m1] = time1.split(':').map(Number)
+      const [h2, m2] = time2.split(':').map(Number)
+      if (h1 !== h2) return h1 - h2
+      return m1 - m2
+    }
+    
+    for (let i = 0; i < 7; i++) {
+      const date = new Date()
+      date.setDate(date.getDate() + i)
+      const dateStr = date.toISOString().split('T')[0]
+      const dateFormatted = date.toLocaleDateString('vi-VN', { weekday: 'short', day: '2-digit', month: '2-digit' })
+      
+      // Tìm tất cả các khoảng thời gian bận trong ngày này
+      const busyPeriods = []
+      
+      activeBookings.forEach(booking => {
+        const checkInDate = new Date(booking.checkInDate).toISOString().split('T')[0]
+        const checkOutDate = new Date(booking.checkOutDate).toISOString().split('T')[0]
+        
+        // Nếu booking bắt đầu và kết thúc trong cùng ngày
+        if (checkInDate === dateStr && checkOutDate === dateStr) {
+          busyPeriods.push({
+            start: booking.checkInTime,
+            end: booking.checkOutTime
+          })
+        }
+        // Nếu booking bắt đầu trong ngày này (nhưng kết thúc ngày khác)
+        else if (checkInDate === dateStr) {
+          busyPeriods.push({
+            start: booking.checkInTime,
+            end: '23:59'
+          })
+        }
+        // Nếu booking kết thúc trong ngày này (nhưng bắt đầu ngày khác)
+        else if (checkOutDate === dateStr) {
+          busyPeriods.push({
+            start: '00:00',
+            end: booking.checkOutTime
+          })
+        }
+        // Nếu booking bao phủ cả ngày (bắt đầu trước và kết thúc sau)
+        else if (checkInDate < dateStr && checkOutDate > dateStr) {
+          busyPeriods.push({
+            start: '00:00',
+            end: '23:59'
+          })
+        }
+      })
+      
+      // Nếu không có booking nào, cả ngày trống
+      if (busyPeriods.length === 0) {
+        availableSlots.push({
+          date: dateStr,
+          startTime: '00:00',
+          endTime: '23:59',
+          label: `${dateFormatted} - Cả ngày (00:00 - 23:59)`
+        })
+        continue
+      }
+      
+      // Sắp xếp các khoảng bận theo thời gian bắt đầu
+      busyPeriods.sort((a, b) => compareTime(a.start, b.start))
+      
+      // Merge các khoảng bận trùng lặp hoặc liền kề
+      const mergedBusyPeriods = []
+      let currentBusy = busyPeriods[0]
+      
+      for (let j = 1; j < busyPeriods.length; j++) {
+        const nextBusy = busyPeriods[j]
+        // Nếu khoảng tiếp theo bắt đầu trước hoặc ngay sau khi khoảng hiện tại kết thúc
+        if (compareTime(nextBusy.start, currentBusy.end) <= 0) {
+          // Merge: lấy thời gian kết thúc lớn hơn
+          currentBusy.end = compareTime(currentBusy.end, nextBusy.end) > 0 ? currentBusy.end : nextBusy.end
+        } else {
+          // Không overlap, lưu khoảng hiện tại và chuyển sang khoảng tiếp theo
+          mergedBusyPeriods.push(currentBusy)
+          currentBusy = nextBusy
+        }
+      }
+      mergedBusyPeriods.push(currentBusy)
+      
+      // Tìm các khoảng trống giữa các khoảng bận
+      let currentTime = '00:00'
+      
+      mergedBusyPeriods.forEach(busy => {
+        // Nếu có khoảng trống trước khoảng bận
+        if (compareTime(busy.start, currentTime) > 0) {
+          availableSlots.push({
+            date: dateStr,
+            startTime: currentTime,
+            endTime: busy.start,
+            label: `${dateFormatted} ${currentTime} - ${busy.start}`
+          })
+        }
+        // Cập nhật thời gian hiện tại sau khoảng bận
+        currentTime = compareTime(busy.end, currentTime) > 0 ? busy.end : currentTime
+      })
+      
+      // Nếu còn thời gian trống sau khoảng bận cuối cùng
+      if (compareTime(currentTime, '23:59') < 0) {
+        availableSlots.push({
+          date: dateStr,
+          startTime: currentTime,
+          endTime: '23:59',
+          label: `${dateFormatted} ${currentTime} - 23:59`
+        })
+      }
+    }
+    
+    return availableSlots
+  }
+
+  // Kiểm tra xem thời gian đã chọn có trùng với booking nào không
+  const checkTimeConflict = (checkInDate, checkInTime, checkOutDate, checkOutTime) => {
+    const checkTimeOverlap = (start1Date, start1Time, end1Date, end1Time, start2Date, start2Time, end2Date, end2Time) => {
+      const start1 = new Date(`${start1Date}T${start1Time}`)
+      const end1 = new Date(`${end1Date}T${end1Time}`)
+      const start2 = new Date(`${start2Date}T${start2Time}`)
+      const end2 = new Date(`${end2Date}T${end2Time}`)
+      return start1 < end2 && start2 < end1
+    }
+
+    const activeBookings = roomBookings.filter(b => 
+      ['pending', 'confirmed', 'checked-in', 'payment-pending'].includes(b.status)
+    )
+
+    return activeBookings.filter(booking => {
+      const bookingCheckInDate = new Date(booking.checkInDate).toISOString().split('T')[0]
+      const bookingCheckOutDate = new Date(booking.checkOutDate).toISOString().split('T')[0]
+      return checkTimeOverlap(
+        checkInDate, checkInTime,
+        checkOutDate, checkOutTime,
+        bookingCheckInDate, booking.checkInTime,
+        bookingCheckOutDate, booking.checkOutTime
+      )
+    })
+  }
+
+  // Kiểm tra real-time khi user thay đổi thời gian
+  useEffect(() => {
+    if (!checkIn || !checkInTime || !roomBookings.length) {
+      setTimeConflictWarning('')
+      return
+    }
+
+    let finalCheckOutDate = checkOut
+    let finalCheckOutTime = checkOutTime
+
+    if (bookingType === 'overnight') {
+      const [year, month, day] = checkIn.split('-').map(Number)
+      const checkInDate = new Date(year, month - 1, day)
+      const nextDay = new Date(checkInDate)
+      nextDay.setDate(nextDay.getDate() + 1)
+      const nextYear = nextDay.getFullYear()
+      const nextMonth = String(nextDay.getMonth() + 1).padStart(2, '0')
+      const nextDayStr = String(nextDay.getDate()).padStart(2, '0')
+      finalCheckOutDate = `${nextYear}-${nextMonth}-${nextDayStr}`
+      finalCheckOutTime = '12:00'
+    } else if (bookingType === 'hourly' && hours) {
+      const [hoursStr, minutesStr] = checkInTime.split(':')
+      const checkInHours = parseInt(hoursStr, 10)
+      const checkInMinutes = parseInt(minutesStr, 10)
+      const [year, month, day] = checkIn.split('-').map(Number)
+      const checkInDateTime = new Date(year, month - 1, day, checkInHours, checkInMinutes, 0, 0)
+      const checkOutDateTime = new Date(checkInDateTime)
+      checkOutDateTime.setHours(checkOutDateTime.getHours() + hours)
+      const checkOutYear = checkOutDateTime.getFullYear()
+      const checkOutMonth = String(checkOutDateTime.getMonth() + 1).padStart(2, '0')
+      const checkOutDay = String(checkOutDateTime.getDate()).padStart(2, '0')
+      finalCheckOutDate = `${checkOutYear}-${checkOutMonth}-${checkOutDay}`
+      const checkOutHours = checkOutDateTime.getHours().toString().padStart(2, '0')
+      const checkOutMinutes = checkOutDateTime.getMinutes().toString().padStart(2, '0')
+      finalCheckOutTime = `${checkOutHours}:${checkOutMinutes}`
+    }
+
+    const conflicts = checkTimeConflict(checkIn, checkInTime, finalCheckOutDate, finalCheckOutTime)
+    if (conflicts.length > 0) {
+      const conflictDetails = conflicts.map(b => {
+        const checkInStr = `${new Date(b.checkInDate).toLocaleDateString('vi-VN')} ${b.checkInTime}`
+        const checkOutStr = `${new Date(b.checkOutDate).toLocaleDateString('vi-VN')} ${b.checkOutTime}`
+        return `• ${checkInStr} - ${checkOutStr}`
+      }).join('\n')
+      setTimeConflictWarning(`⚠️ Thời gian đã chọn trùng với booking khác:\n${conflictDetails}\n\nVui lòng chọn thời gian khác.`)
+    } else {
+      setTimeConflictWarning('')
+    }
+  }, [checkIn, checkInTime, checkOut, checkOutTime, hours, bookingType, roomBookings])
+
   // Handle submit booking
   const handleSubmitBooking = (e) => {
     e.preventDefault()
@@ -228,10 +466,16 @@ const RoomDetail = () => {
     
     if (bookingType === 'overnight') {
       // Overnight: ngày hôm sau lúc 12:00
-      const checkInDate = new Date(checkIn)
+      // Tạo Date ở local timezone để tránh timezone issues
+      const [year, month, day] = checkIn.split('-').map(Number)
+      const checkInDate = new Date(year, month - 1, day)
       const nextDay = new Date(checkInDate)
       nextDay.setDate(nextDay.getDate() + 1)
-      finalCheckOutDate = nextDay.toISOString().split('T')[0]
+      // Format lại thành YYYY-MM-DD
+      const nextYear = nextDay.getFullYear()
+      const nextMonth = String(nextDay.getMonth() + 1).padStart(2, '0')
+      const nextDayStr = String(nextDay.getDate()).padStart(2, '0')
+      finalCheckOutDate = `${nextYear}-${nextMonth}-${nextDayStr}`
       finalCheckOutTime = '12:00'
     } else if (bookingType === 'hourly') {
       // Hourly: tự động tính từ checkIn, checkInTime và hours
@@ -241,13 +485,18 @@ const RoomDetail = () => {
           const checkInHours = parseInt(hoursStr, 10)
           const checkInMinutes = parseInt(minutesStr, 10)
           
-          const checkInDateTime = new Date(checkIn)
-          checkInDateTime.setHours(checkInHours, checkInMinutes, 0, 0)
+          // Tạo Date ở local timezone để tránh timezone issues
+          const [year, month, day] = checkIn.split('-').map(Number)
+          const checkInDateTime = new Date(year, month - 1, day, checkInHours, checkInMinutes, 0, 0)
           
           const checkOutDateTime = new Date(checkInDateTime)
           checkOutDateTime.setHours(checkOutDateTime.getHours() + hours)
           
-          finalCheckOutDate = checkOutDateTime.toISOString().split('T')[0]
+          // Format lại thành YYYY-MM-DD (local timezone)
+          const checkOutYear = checkOutDateTime.getFullYear()
+          const checkOutMonth = String(checkOutDateTime.getMonth() + 1).padStart(2, '0')
+          const checkOutDay = String(checkOutDateTime.getDate()).padStart(2, '0')
+          finalCheckOutDate = `${checkOutYear}-${checkOutMonth}-${checkOutDay}`
           
           const checkOutHours = checkOutDateTime.getHours().toString().padStart(2, '0')
           const checkOutMinutes = checkOutDateTime.getMinutes().toString().padStart(2, '0')
@@ -257,6 +506,19 @@ const RoomDetail = () => {
           // Fallback: sử dụng giá trị hiện tại
         }
       }
+    }
+
+    // Kiểm tra trùng giờ trước khi submit
+    const conflicts = checkTimeConflict(checkIn, checkInTime, finalCheckOutDate, finalCheckOutTime)
+    if (conflicts.length > 0) {
+      const conflictDetails = conflicts.map(b => {
+        const checkInStr = `${new Date(b.checkInDate).toLocaleDateString('vi-VN')} ${b.checkInTime}`
+        const checkOutStr = `${new Date(b.checkOutDate).toLocaleDateString('vi-VN')} ${b.checkOutTime}`
+        return `${checkInStr} - ${checkOutStr}`
+      }).join(', ')
+      
+      alert(`⚠️ Phòng đã được đặt trong khoảng thời gian này!\n\nKhung giờ bị trùng:\n${conflictDetails}\n\nVui lòng chọn thời gian khác hoặc xem các khung giờ còn trống bên dưới.`)
+      return
     }
 
     // Chuẩn bị dữ liệu booking
@@ -708,6 +970,99 @@ const RoomDetail = () => {
                 </div>
               </div>
             </div>
+
+            {/* Booking Schedule - Show occupied time slots */}
+            {roomBookings.length > 0 && (
+              <div className="mt-10 space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-2xl font-display">Lịch Đặt Phòng</h3>
+                  <button
+                    onClick={() => setShowBookingSchedule(!showBookingSchedule)}
+                    className="text-sm text-primary hover:underline flex items-center gap-1"
+                  >
+                    {showBookingSchedule ? 'Ẩn' : 'Xem lịch'}
+                    <span className="material-symbols-outlined text-base">
+                      {showBookingSchedule ? 'expand_less' : 'expand_more'}
+                    </span>
+                  </button>
+                </div>
+                
+                {showBookingSchedule && (
+                  <div className="p-6 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl">
+                    <div className="mb-4 flex items-start gap-3">
+                      <span className="material-symbols-outlined text-amber-600 dark:text-amber-400 text-xl">info</span>
+                      <div>
+                        <p className="text-sm text-amber-800 dark:text-amber-300 font-medium mb-2">
+                          Phòng này đang có lịch đặt. Dưới đây là các khung giờ đã được đặt và còn trống trong 7 ngày tới:
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="space-y-6 mt-4">
+                      {/* Danh sách bookings */}
+                      {getUpcomingBookings().length > 0 && (
+                        <div className="bg-white dark:bg-background-dark p-4 rounded-lg border border-black/5 dark:border-white/5">
+                          <p className="text-xs font-bold uppercase tracking-wider text-red-600 dark:text-red-400 mb-3">Đã đặt:</p>
+                          <div className="space-y-2">
+                            {getUpcomingBookings().map((booking, idx) => (
+                              <div key={idx} className="flex items-center gap-2 text-sm pl-3">
+                                <span className="material-symbols-outlined text-red-500 text-base">block</span>
+                                <span className="text-red-600 dark:text-red-400">{booking.start} - {booking.end}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Danh sách khung giờ trống */}
+                      {findAllAvailableSlots().length > 0 && (
+                        <div className="bg-white dark:bg-background-dark p-4 rounded-lg border border-black/5 dark:border-white/5">
+                          <p className="text-xs font-bold uppercase tracking-wider text-green-600 dark:text-green-400 mb-3">
+                            💡 Khung Giờ Tối Ưu (Còn Trống):
+                          </p>
+                          <div className="space-y-2 max-h-60 overflow-y-auto">
+                            {findAllAvailableSlots().slice(0, 10).map((slot, idx) => (
+                              <div key={idx} className="flex items-center gap-2 text-sm pl-3 p-2 hover:bg-green-50 dark:hover:bg-green-900/10 rounded transition-colors cursor-pointer group">
+                                <span className="material-symbols-outlined text-green-500 text-base">check_circle</span>
+                                <span className="text-green-600 dark:text-green-400 flex-1">{slot.label}</span>
+                                <button
+                                  onClick={() => {
+                                    // Sử dụng thông tin đã có trong slot object
+                                    if (slot.date && slot.startTime) {
+                                      setCheckIn(slot.date)
+                                      setCheckInTime(slot.startTime)
+                                      
+                                      // Nếu là hourly và có endTime, tính số giờ
+                                      if (bookingType === 'hourly' && slot.endTime) {
+                                        const [startH, startM] = slot.startTime.split(':').map(Number)
+                                        const [endH, endM] = slot.endTime.split(':').map(Number)
+                                        const diffMinutes = (endH * 60 + endM) - (startH * 60 + startM)
+                                        const hoursCount = Math.max(1, Math.floor(diffMinutes / 60))
+                                        if (hoursCount > 0 && hoursCount <= 24) {
+                                          setHours(hoursCount)
+                                        }
+                                      }
+                                    }
+                                  }}
+                                  className="opacity-0 group-hover:opacity-100 text-xs text-primary hover:text-primary/80 transition-opacity px-2 py-1 rounded hover:bg-primary/10"
+                                >
+                                  Chọn
+                                </button>
+                              </div>
+                            ))}
+                            {findAllAvailableSlots().length > 10 && (
+                              <p className="text-xs text-center text-gray-500 mt-2">
+                                + {findAllAvailableSlots().length - 10} khung giờ khác...
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Booking Widget (Right Sidebar) */}
@@ -1108,23 +1463,42 @@ const RoomDetail = () => {
                   </div>
                 </div>
 
-                {room.status === 'Available' ? (
-                  <button
-                    type="submit"
-                    onClick={handleSubmitBooking}
-                    className="w-full py-4 bg-primary text-white font-bold uppercase tracking-[0.2em] rounded-lg hover:brightness-105 transition-all shadow-lg shadow-primary/20"
-                  >
-                    Xác Nhận Đặt Phòng
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    disabled
-                    className="w-full py-4 bg-charcoal/20 text-charcoal/40 dark:text-white/20 dark:text-white/40 font-bold uppercase tracking-[0.2em] rounded-lg cursor-not-allowed"
-                  >
-                    Phòng Không Có Sẵn
-                  </button>
+                {/* Hiển thị cảnh báo nếu trùng giờ */}
+                {timeConflictWarning && (
+                  <div className="p-4 bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-200 dark:border-red-800">
+                    <p className="text-sm text-red-800 dark:text-red-300 whitespace-pre-line">
+                      {timeConflictWarning}
+                    </p>
+                    <button
+                      onClick={() => setShowBookingSchedule(true)}
+                      className="mt-2 text-xs text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-300 underline"
+                    >
+                      Xem các khung giờ còn trống →
+                    </button>
+                  </div>
                 )}
+
+                {/* Luôn cho phép đặt phòng, backend sẽ validate và thông báo nếu trùng lịch */}
+                <button
+                  type="submit"
+                  onClick={handleSubmitBooking}
+                  disabled={!!timeConflictWarning}
+                  className={`w-full py-4 bg-primary text-white font-bold uppercase tracking-[0.2em] rounded-lg hover:brightness-105 transition-all shadow-lg shadow-primary/20 ${
+                    timeConflictWarning ? 'opacity-50 cursor-not-allowed' : ''
+                  }`}
+                >
+                  {timeConflictWarning ? 'Thời Gian Trùng - Vui Lòng Chọn Lại' : 'Xác Nhận Đặt Phòng'}
+                </button>
+                
+                {room.status !== 'Available' && !timeConflictWarning && (
+                  <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+                    <p className="text-xs text-blue-800 dark:text-blue-300 flex items-center gap-2">
+                      <span className="material-symbols-outlined text-sm">info</span>
+                      <span>Phòng đang được thuê. Vui lòng kiểm tra lịch đặt phòng ở trên để chọn khung giờ còn trống.</span>
+                    </p>
+                  </div>
+                )}
+                
                 <p className="text-[10px] text-center opacity-40 uppercase tracking-widest">
                   Bạn sẽ không bị tính phí ngay
                 </p>

@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import api from '../services/api'
 import socket from '../services/socket'
 
 const MyBookings = () => {
   const { user, logout } = useAuth()
+  const navigate = useNavigate()
   const [bookings, setBookings] = useState([])
   const [loading, setLoading] = useState(true)
   const [selectedBooking, setSelectedBooking] = useState(null)
@@ -45,6 +46,40 @@ const MyBookings = () => {
   }
 
   const handleViewDetails = (booking) => {
+    // Xác định trang trạng thái booking dựa trên status và paymentMethod
+    const bookingId = booking._id
+    
+    // Nếu booking đang ở trạng thái payment-pending hoặc pending (online), điều hướng đến payment-pending
+    if (booking.status === 'payment-pending' || 
+        (booking.status === 'pending' && booking.paymentMethod === 'online')) {
+      navigate(`/booking/payment-pending/${bookingId}`)
+      return
+    }
+    
+    // Nếu booking đã confirmed nhưng chưa bookingConfirmed (online), điều hướng đến confirmation-pending
+    if (booking.status === 'confirmed' && 
+        booking.paymentMethod === 'online' && 
+        !booking.bookingConfirmed) {
+      navigate(`/booking/confirmation-pending/${bookingId}`)
+      return
+    }
+    
+    // Nếu booking đã bookingConfirmed hoặc checked-in hoặc completed, điều hướng đến success
+    if (booking.bookingConfirmed || 
+        ['checked-in', 'completed'].includes(booking.status)) {
+      navigate(`/booking/success/${bookingId}`)
+      return
+    }
+    
+    // Nếu booking đã confirmed (cash) nhưng chưa bookingConfirmed, điều hướng đến confirmation-pending
+    if (booking.status === 'confirmed' && 
+        booking.paymentMethod === 'cash' && 
+        !booking.bookingConfirmed) {
+      navigate(`/booking/confirmation-pending/${bookingId}`)
+      return
+    }
+    
+    // Mặc định: hiển thị modal cho các trường hợp khác
     setSelectedBooking(booking)
     setShowModal(true)
   }
@@ -230,7 +265,10 @@ const MyBookings = () => {
                     <div className="flex-1">
                       <div className="flex items-center gap-3 mb-3">
                         <h3 className="serif-heading text-2xl text-charcoal dark:text-white">
-                          {booking.room?.name || 'Phòng không xác định'}
+                          {booking.room?.name || 
+                           booking.room?.type?.name || 
+                           (booking.room?.roomNumber ? `Phòng ${booking.room.roomNumber}` : null) || 
+                           'Phòng không xác định'}
                         </h3>
                         {getStatusBadge(booking.status)}
                         {getPaymentStatusBadge(booking.paymentStatus)}
@@ -311,7 +349,12 @@ const MyBookings = () => {
               <div className="p-6 space-y-4">
                 <div>
                   <h3 className="font-semibold text-gray-900 mb-2">Thông Tin Phòng</h3>
-                  <p className="text-gray-600">{selectedBooking.room?.name}</p>
+                  <p className="text-gray-600">
+                    {selectedBooking.room?.name || 
+                     selectedBooking.room?.type?.name || 
+                     (selectedBooking.room?.roomNumber ? `Phòng ${selectedBooking.room.roomNumber}` : null) || 
+                     'Phòng không xác định'}
+                  </p>
                   {selectedBooking.room?.image && (
                     <img
                       src={`http://localhost:5000${selectedBooking.room.image}`}
@@ -382,6 +425,20 @@ const MyBookings = () => {
                 <div>
                   <h3 className="font-semibold text-gray-900 mb-2">Thanh Toán</h3>
                   <div className="bg-gray-50 p-4 rounded-lg space-y-2">
+                    <div className="flex justify-between">
+                      <span>Phương thức:</span>
+                      <span className="font-medium">
+                        {selectedBooking.paymentMethod === 'cash' ? 'Tại Quầy' : 'Online'}
+                      </span>
+                    </div>
+                    {selectedBooking.paymentMethodDetail && selectedBooking.paymentMethodDetail !== 'pending' && (
+                      <div className="flex justify-between">
+                        <span>Thanh toán bằng:</span>
+                        <span className="font-medium">
+                          {selectedBooking.paymentMethodDetail === 'cash' ? '💵 Tiền Mặt' : '📱 QR Code'}
+                        </span>
+                      </div>
+                    )}
                     <div className="flex justify-between">
                       <span>Tiền phòng:</span>
                       <span>{formatCurrency(selectedBooking.roomPrice)}</span>

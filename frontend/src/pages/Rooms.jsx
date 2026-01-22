@@ -55,11 +55,9 @@ const Rooms = () => {
     try {
       setLoadingRooms(true)
       const response = await api.get('/rooms')
-      // Chỉ lấy phòng có status Available và một số phòng nổi bật
-      const availableRooms = response.data.filter(room => room.status === 'Available')
-      // Lấy tối đa 12 phòng nổi bật (có thể randomize hoặc theo điều kiện khác)
-      const featuredRooms = availableRooms.slice(0, 12)
-      setRooms(featuredRooms)
+      // Hiển thị tất cả các phòng (kể cả đang được thuê)
+      // Người dùng có thể xem lịch và đặt khung giờ còn trống
+      setRooms(response.data)
     } catch (error) {
       console.error('Không thể tải danh sách phòng:', error)
     } finally {
@@ -536,10 +534,27 @@ const Rooms = () => {
                     
                     {/* Status Badge */}
                     <div className="absolute top-4 right-4">
-                      <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold uppercase tracking-widest bg-white/95 text-green-700 backdrop-blur-sm shadow-lg">
-                        <span className="w-1.5 h-1.5 rounded-full bg-green-500"></span>
-                        Trống
-                      </span>
+                      {room.status === 'Available' ? (
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold uppercase tracking-widest bg-white/95 text-green-700 backdrop-blur-sm shadow-lg">
+                          <span className="w-1.5 h-1.5 rounded-full bg-green-500"></span>
+                          Trống
+                        </span>
+                      ) : room.status === 'Occupied' ? (
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold uppercase tracking-widest bg-white/95 text-blue-700 backdrop-blur-sm shadow-lg">
+                          <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
+                          Đang Thuê
+                        </span>
+                      ) : room.status === 'Dirty' ? (
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold uppercase tracking-widest bg-white/95 text-amber-700 backdrop-blur-sm shadow-lg">
+                          <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                          Đang Dọn
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold uppercase tracking-widest bg-white/95 text-red-700 backdrop-blur-sm shadow-lg">
+                          <span className="w-1.5 h-1.5 rounded-full bg-red-500"></span>
+                          Bảo Trì
+                        </span>
+                      )}
                     </div>
 
                     {/* Room Number Overlay */}

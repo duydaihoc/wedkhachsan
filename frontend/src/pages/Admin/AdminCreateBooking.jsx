@@ -61,13 +61,18 @@ const AdminCreateBooking = () => {
       const checkInHours = parseInt(hoursStr, 10)
       const checkInMinutes = parseInt(minutesStr, 10)
       
-      const checkInDateTime = new Date(checkIn)
-      checkInDateTime.setHours(checkInHours, checkInMinutes, 0, 0)
+      // Tạo Date ở local timezone để tránh timezone issues
+      const [year, month, day] = checkIn.split('-').map(Number)
+      const checkInDateTime = new Date(year, month - 1, day, checkInHours, checkInMinutes, 0, 0)
       
       const checkOutDateTime = new Date(checkInDateTime)
       checkOutDateTime.setHours(checkOutDateTime.getHours() + hours)
       
-      setCheckOut(checkOutDateTime.toISOString().split('T')[0])
+      // Format lại thành YYYY-MM-DD (local timezone)
+      const checkOutYear = checkOutDateTime.getFullYear()
+      const checkOutMonth = String(checkOutDateTime.getMonth() + 1).padStart(2, '0')
+      const checkOutDay = String(checkOutDateTime.getDate()).padStart(2, '0')
+      setCheckOut(`${checkOutYear}-${checkOutMonth}-${checkOutDay}`)
       
       const checkOutHours = checkOutDateTime.getHours().toString().padStart(2, '0')
       const checkOutMinutes = checkOutDateTime.getMinutes().toString().padStart(2, '0')
@@ -78,10 +83,16 @@ const AdminCreateBooking = () => {
   // Tự động set check-out cho overnight
   useEffect(() => {
     if (bookingType === 'overnight' && checkIn) {
-      const checkInDate = new Date(checkIn)
+      // Tạo Date ở local timezone để tránh timezone issues
+      const [year, month, day] = checkIn.split('-').map(Number)
+      const checkInDate = new Date(year, month - 1, day)
       const nextDay = new Date(checkInDate)
       nextDay.setDate(nextDay.getDate() + 1)
-      setCheckOut(nextDay.toISOString().split('T')[0])
+      // Format lại thành YYYY-MM-DD (local timezone)
+      const nextYear = nextDay.getFullYear()
+      const nextMonth = String(nextDay.getMonth() + 1).padStart(2, '0')
+      const nextDayStr = String(nextDay.getDate()).padStart(2, '0')
+      setCheckOut(`${nextYear}-${nextMonth}-${nextDayStr}`)
       setCheckOutTime('12:00')
     }
   }, [bookingType, checkIn])
@@ -252,10 +263,16 @@ const AdminCreateBooking = () => {
     let finalCheckOutTime = checkOutTime
     
     if (bookingType === 'overnight') {
-      const checkInDate = new Date(checkIn)
+      // Tạo Date ở local timezone để tránh timezone issues
+      const [year, month, day] = checkIn.split('-').map(Number)
+      const checkInDate = new Date(year, month - 1, day)
       const nextDay = new Date(checkInDate)
       nextDay.setDate(nextDay.getDate() + 1)
-      finalCheckOutDate = nextDay.toISOString().split('T')[0]
+      // Format lại thành YYYY-MM-DD (local timezone)
+      const nextYear = nextDay.getFullYear()
+      const nextMonth = String(nextDay.getMonth() + 1).padStart(2, '0')
+      const nextDayStr = String(nextDay.getDate()).padStart(2, '0')
+      finalCheckOutDate = `${nextYear}-${nextMonth}-${nextDayStr}`
       finalCheckOutTime = '12:00'
     } else if (bookingType === 'hourly') {
       if (checkIn && checkInTime && hours) {
@@ -264,13 +281,18 @@ const AdminCreateBooking = () => {
           const checkInHours = parseInt(hoursStr, 10)
           const checkInMinutes = parseInt(minutesStr, 10)
           
-          const checkInDateTime = new Date(checkIn)
-          checkInDateTime.setHours(checkInHours, checkInMinutes, 0, 0)
+          // Tạo Date ở local timezone để tránh timezone issues
+          const [year, month, day] = checkIn.split('-').map(Number)
+          const checkInDateTime = new Date(year, month - 1, day, checkInHours, checkInMinutes, 0, 0)
           
           const checkOutDateTime = new Date(checkInDateTime)
           checkOutDateTime.setHours(checkOutDateTime.getHours() + hours)
           
-          finalCheckOutDate = checkOutDateTime.toISOString().split('T')[0]
+          // Format lại thành YYYY-MM-DD (local timezone)
+          const checkOutYear = checkOutDateTime.getFullYear()
+          const checkOutMonth = String(checkOutDateTime.getMonth() + 1).padStart(2, '0')
+          const checkOutDay = String(checkOutDateTime.getDate()).padStart(2, '0')
+          finalCheckOutDate = `${checkOutYear}-${checkOutMonth}-${checkOutDay}`
           
           const checkOutHours = checkOutDateTime.getHours().toString().padStart(2, '0')
           const checkOutMinutes = checkOutDateTime.getMinutes().toString().padStart(2, '0')

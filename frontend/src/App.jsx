@@ -20,6 +20,9 @@ import BookingConfirm from './pages/BookingConfirm'
 import PaymentMethod from './pages/PaymentMethod'
 import OnlinePayment from './pages/OnlinePayment'
 import BookingSuccess from './pages/BookingSuccess'
+import BookingPending from './pages/BookingPending'
+import PaymentPending from './pages/PaymentPending'
+import BookingConfirmationPending from './pages/BookingConfirmationPending'
 import MyBookings from './pages/MyBookings'
 import ProtectedRoute from './components/ProtectedRoute'
 import NotificationToast from './components/NotificationToast'
@@ -152,6 +155,30 @@ function App() {
             element={
               <ProtectedRoute>
                 <OnlinePayment />
+              </ProtectedRoute>
+            } 
+          />
+          <Route 
+            path="/booking/pending" 
+            element={
+              <ProtectedRoute>
+                <BookingPending />
+              </ProtectedRoute>
+            } 
+          />
+          <Route 
+            path="/booking/payment-pending/:id" 
+            element={
+              <ProtectedRoute>
+                <PaymentPending />
+              </ProtectedRoute>
+            } 
+          />
+          <Route 
+            path="/booking/confirmation-pending/:id" 
+            element={
+              <ProtectedRoute>
+                <BookingConfirmationPending />
               </ProtectedRoute>
             } 
           />
