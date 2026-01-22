@@ -20,11 +20,6 @@ const BookingConfirm = () => {
   })
 
   useEffect(() => {
-    if (!user) {
-      navigate('/login')
-      return
-    }
-
     // Lấy dữ liệu booking từ sessionStorage
     const pendingBooking = sessionStorage.getItem('pendingBooking')
     if (!pendingBooking) {
@@ -35,10 +30,28 @@ const BookingConfirm = () => {
     const data = JSON.parse(pendingBooking)
     setBookingData(data)
 
+    // Nếu có guestInfo (khách vãng lai), load thông tin từ đó
+    if (data.guestInfo) {
+      setGuestInfo({
+        fullName: data.guestInfo.fullName || '',
+        email: data.guestInfo.email || '',
+        phone: data.guestInfo.phone || '',
+        specialRequests: ''
+      })
+    } else if (user) {
+      // Nếu là user đã đăng nhập, load từ user
+      setGuestInfo({
+        fullName: user.fullName || '',
+        email: user.email || '',
+        phone: user.phone || '',
+        specialRequests: ''
+      })
+    }
+
     // Fetch thông tin phòng và services
     fetchRoom(data.room)
     fetchServices(data.services || [])
-  }, [])
+  }, [user, navigate])
 
   const fetchRoom = async (roomId) => {
     try {
@@ -54,7 +67,7 @@ const BookingConfirm = () => {
 
   const fetchServices = async (serviceIds) => {
     if (serviceIds.length === 0) return
-    
+
     try {
       const response = await api.get('/services')
       const selectedServices = response.data.filter(s => serviceIds.includes(s._id))
@@ -227,16 +240,16 @@ const BookingConfirm = () => {
               <div className="bg-white dark:bg-background-dark border border-black/5 dark:border-white/5 rounded-2xl overflow-hidden shadow-sm flex flex-col md:flex-row">
                 {/* Room Image */}
                 <div className="w-full md:w-1/3 h-48 md:h-auto overflow-hidden">
-                  <div 
+                  <div
                     className="w-full h-full bg-cover bg-center"
                     style={{
-                      backgroundImage: room.images && room.images[0] 
-                        ? `url(${room.images[0]})` 
+                      backgroundImage: room.images && room.images[0]
+                        ? `url(${room.images[0]})`
                         : 'url(https://images.unsplash.com/photo-1611892440504-42a792e24d32?w=800)'
                     }}
                   ></div>
                 </div>
-                
+
                 {/* Room Details */}
                 <div className="p-8 flex-1 flex flex-col justify-center">
                   <h4 className="text-xl font-display mb-4">
@@ -296,27 +309,27 @@ const BookingConfirm = () => {
           <div className="w-full lg:w-1/3">
             <div className="sticky top-32 p-8 bg-white dark:bg-background-dark border border-black/10 dark:border-white/10 rounded-2xl shadow-xl shadow-black/5">
               <h3 className="text-xl font-display mb-6 pb-4 border-b border-black/5 dark:border-white/5">Tổng Chi Phí</h3>
-              
+
               <div className="space-y-4 mb-8">
                 <div className="flex justify-between items-center text-sm">
                   <span className="opacity-60">Giá Phòng</span>
                   <span className="font-medium">{formatPrice(bookingData.roomPrice)}</span>
                 </div>
-                
+
                 {bookingData.amenitiesPrice > 0 && (
                   <div className="flex justify-between items-center text-sm">
                     <span className="opacity-60">Tiện Ích</span>
                     <span className="font-medium">{formatPrice(bookingData.amenitiesPrice)}</span>
                   </div>
                 )}
-                
+
                 {bookingData.servicesPrice > 0 && (
                   <div className="flex justify-between items-center text-sm">
                     <span className="opacity-60">Dịch Vụ</span>
                     <span className="font-medium">{formatPrice(bookingData.servicesPrice)}</span>
                   </div>
                 )}
-                
+
                 <div className="pt-6 border-t border-black/5 dark:border-white/5">
                   <div className="flex justify-between items-baseline">
                     <span className="text-lg font-display">Tổng Cộng</span>
@@ -338,14 +351,14 @@ const BookingConfirm = () => {
                   Tiếp Tục Thanh Toán
                   <span className="material-symbols-outlined text-sm">arrow_forward</span>
                 </button>
-                
+
                 <Link
                   to={`/rooms/${room._id}`}
                   className="block w-full py-3 text-center border border-black/10 dark:border-white/10 rounded-lg hover:border-primary hover:text-primary transition-all text-sm uppercase tracking-[0.2em] font-bold"
                 >
                   Quay Lại
                 </Link>
-                
+
                 <div className="flex items-center justify-center gap-2 opacity-40 mt-4">
                   <span className="material-symbols-outlined text-sm">lock</span>
                   <p className="text-[10px] uppercase tracking-widest font-bold">Thanh Toán Bảo Mật</p>
@@ -389,8 +402,8 @@ const BookingConfirm = () => {
           <div>
             <h4 className="text-xs font-bold uppercase tracking-widest mb-6">Địa Chỉ</h4>
             <p className="text-sm opacity-70 leading-relaxed">
-              123 Đường Biển<br/>
-              Thành Phố Đà Nẵng<br/>
+              123 Đường Biển<br />
+              Thành Phố Đà Nẵng<br />
               Việt Nam
             </p>
           </div>

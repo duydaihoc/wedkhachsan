@@ -15,15 +15,12 @@ const BookingSuccess = () => {
   const [error, setError] = useState('')
 
   useEffect(() => {
-    if (!user) {
-      navigate('/login')
+    if (!id) {
+      navigate('/')
       return
     }
 
     fetchBooking()
-
-    // Không cần socket cho trang success vì đây là trang hoàn tất
-    // Chỉ cần fetch booking khi reload trang
   }, [id, user, navigate])
 
   const checkAndRedirect = (bookingData) => {
@@ -42,10 +39,19 @@ const BookingSuccess = () => {
 
   const fetchBooking = async () => {
     try {
-      const response = await api.get(`/bookings/${id}`)
+      let response;
+      if (user) {
+        response = await api.get(`/bookings/${id}`)
+      } else {
+        // Dùng axios trực tiếp gọi API public cho khách vãng lai
+        const API_URL = 'http://localhost:5000/api';
+        const axiosLib = await import('axios');
+        const axios = axiosLib.default;
+        response = await axios.get(`${API_URL}/bookings/public/${id}`);
+      }
       const bookingData = response.data
       setBooking(bookingData)
-      
+
       // Kiểm tra và chuyển hướng nếu booking chưa ở trạng thái hoàn tất
       checkAndRedirect(bookingData)
     } catch (error) {
@@ -123,10 +129,10 @@ const BookingSuccess = () => {
     // Create calendar event
     const checkIn = new Date(`${booking.checkInDate}T${booking.checkInTime}`)
     const checkOut = new Date(`${booking.checkOutDate}T${booking.checkOutTime}`)
-    
+
     const startDate = checkIn.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z'
     const endDate = checkOut.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z'
-    
+
     const title = encodeURIComponent(`Đặt phòng ${booking.room?.roomNumber || ''} - Aurelius Grand`)
     const details = encodeURIComponent(
       `Mã đặt phòng: ${booking.bookingCode}\n` +
@@ -134,10 +140,14 @@ const BookingSuccess = () => {
       `Loại: ${booking.room?.type?.name || 'N/A'}`
     )
     const location = encodeURIComponent('Aurelius Grand Hotel')
-    
+
     const googleCalendarUrl = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${startDate}/${endDate}&details=${details}&location=${location}`
-    
+
     window.open(googleCalendarUrl, '_blank')
+  }
+
+  const handlePrint = () => {
+    window.print()
   }
 
   if (loading) {
@@ -197,7 +207,7 @@ const BookingSuccess = () => {
               backgroundImage: 'radial-gradient(circle at top right, rgba(190, 160, 106, 0.05), transparent)'
             }}>
               <h3 className="text-2xl font-display mb-8">Tóm Tắt Đặt Phòng</h3>
-              
+
               {/* Room Info */}
               <div className="flex flex-col md:flex-row gap-8 pb-8 border-b border-black/5">
                 <div className="w-full md:w-48 h-32 rounded-lg overflow-hidden shrink-0">
@@ -231,11 +241,11 @@ const BookingSuccess = () => {
                     <div>
                       <p className="opacity-50 uppercase text-[10px] font-bold tracking-widest mb-1">Thời Gian</p>
                       <p className="font-medium">
-                        {booking.bookingType === 'hourly' 
+                        {booking.bookingType === 'hourly'
                           ? `${booking.hours} Giờ`
                           : booking.bookingType === 'overnight'
-                          ? 'Qua Đêm'
-                          : `${nights} ${nights === 1 ? 'Đêm' : 'Đêm'}`
+                            ? 'Qua Đêm'
+                            : `${nights} ${nights === 1 ? 'Đêm' : 'Đêm'}`
                         }
                       </p>
                     </div>
@@ -249,44 +259,44 @@ const BookingSuccess = () => {
                 <div className="space-y-3">
                   <div className="flex justify-between text-sm">
                     <span className="opacity-60">
-                      {booking.bookingType === 'hourly' 
+                      {booking.bookingType === 'hourly'
                         ? `Tiền phòng (${booking.hours} giờ)`
                         : booking.bookingType === 'overnight'
-                        ? 'Qua đêm'
-                        : `Tiền phòng x ${nights} ${nights === 1 ? 'đêm' : 'đêm'}`
+                          ? 'Qua đêm'
+                          : `Tiền phòng x ${nights} ${nights === 1 ? 'đêm' : 'đêm'}`
                       }
                     </span>
                     <span className="font-medium">{formatPrice(booking.roomPrice)}</span>
                   </div>
-                  
+
                   {booking.amenitiesPrice > 0 && (
                     <div className="flex justify-between text-sm">
                       <span className="opacity-60">Tiện ích</span>
                       <span className="font-medium">{formatPrice(booking.amenitiesPrice)}</span>
                     </div>
                   )}
-                  
+
                   {booking.servicesPrice > 0 && (
                     <div className="flex justify-between text-sm">
                       <span className="opacity-60">Dịch vụ</span>
                       <span className="font-medium">{formatPrice(booking.servicesPrice)}</span>
                     </div>
                   )}
-                  
+
                   {booking.paymentMethod === 'online' && booking.paidAmount > 0 && (
                     <div className="flex justify-between text-sm">
                       <span className="opacity-60">Đã thanh toán (Đặt cọc)</span>
                       <span className="font-medium text-green-600 dark:text-green-400">{formatPrice(booking.paidAmount)}</span>
                     </div>
                   )}
-                  
+
                   {booking.paymentMethod === 'online' && booking.remainingAmount > 0 && (
                     <div className="flex justify-between text-sm">
                       <span className="opacity-60">Còn lại</span>
                       <span className="font-medium">{formatPrice(booking.remainingAmount)}</span>
                     </div>
                   )}
-                  
+
                   <div className="h-px bg-black/5 dark:bg-white/5 my-4"></div>
                   <div className="flex justify-between items-baseline">
                     <span className="text-lg font-display font-bold">Tổng Cộng</span>
@@ -296,7 +306,7 @@ const BookingSuccess = () => {
                     <p className="text-[10px] text-right opacity-40 italic">Thanh toán tại quầy khi nhận phòng</p>
                   ) : (
                     <p className="text-[10px] text-right opacity-40 italic">
-                      {booking.paymentStatus === 'partial' 
+                      {booking.paymentStatus === 'partial'
                         ? `Đã thanh toán ${formatPrice(booking.paidAmount)} (30% đặt cọc)`
                         : 'Đã thanh toán đầy đủ'
                       }
@@ -311,7 +321,7 @@ const BookingSuccess = () => {
           <div className="lg:col-span-5 space-y-8">
             <div className="bg-white dark:bg-zinc-900 rounded-2xl p-8 border border-black/5 shadow-sm">
               <h3 className="text-2xl font-display mb-6">Bước Tiếp Theo?</h3>
-              
+
               <div className="space-y-6 mb-8">
                 {/* Check-In Instructions */}
                 <div className="flex gap-4">
@@ -321,7 +331,7 @@ const BookingSuccess = () => {
                   <div>
                     <h5 className="font-bold text-sm uppercase tracking-wide">Hướng Dẫn Nhận Phòng</h5>
                     <p className="text-sm opacity-70 leading-relaxed mt-1">
-                      {booking.paymentMethod === 'cash' 
+                      {booking.paymentMethod === 'cash'
                         ? `Nhận phòng sau ${booking.checkInTime}. Vui lòng mang theo CMND/CCCD và mã đặt phòng ${booking.bookingCode} đến quầy lễ tân để thanh toán và nhận phòng.`
                         : `Nhận phòng sau ${booking.checkInTime}. Vui lòng mang theo CMND/CCCD và mã đặt phòng ${booking.bookingCode} đến quầy lễ tân. ${booking.paymentStatus === 'partial' ? 'Bạn cần thanh toán số tiền còn lại khi nhận phòng.' : ''}`
                       }
@@ -348,21 +358,77 @@ const BookingSuccess = () => {
                 </div>
               </div>
 
+              <div id="booking-card" className={`bg-white dark:bg-zinc-900 rounded-2xl p-0 border border-black/5 shadow-lg overflow-hidden relative print:shadow-none print:border-2 print:border-black mb-8 ${!user ? '' : 'hidden print:block'}`}>
+                {/* Decorative top bar */}
+                <div className="h-2 bg-gradient-to-r from-primary to-primary/60"></div>
+
+                <div className="p-8">
+                  <div className="flex justify-between items-start mb-6">
+                    <div>
+                      <h3 className="text-xl font-bold uppercase tracking-widest font-display text-primary">Thẻ Đặt Phòng</h3>
+                      <p className="text-[10px] uppercase tracking-widest opacity-60">Guest Booking Ticket</p>
+                    </div>
+                    <div className="size-12 bg-primary/10 rounded-full flex items-center justify-center">
+                      <span className="material-symbols-outlined text-primary text-2xl">confirmation_number</span>
+                    </div>
+                  </div>
+
+                  <div className="space-y-6">
+                    <div className="bg-background-light dark:bg-black/20 p-4 rounded-lg border border-black/5 dark:border-white/5">
+                      <span className="block text-[10px] uppercase tracking-widest font-bold opacity-50 mb-1">Mã Đặt Phòng</span>
+                      <span className="text-3xl font-display font-bold tracking-widest text-[#161513] dark:text-white uppercase">{booking.bookingCode}</span>
+                    </div>
+
+                    <div className="space-y-3 px-1">
+                      <div>
+                        <span className="block text-[10px] uppercase tracking-widest font-bold opacity-50 mb-1">Khách Hàng</span>
+                        <span className="text-sm font-bold">{booking.user?.fullName || 'Khách vãng lai'}</span>
+                      </div>
+                      <div>
+                        <span className="block text-[10px] uppercase tracking-widest font-bold opacity-50 mb-1">Số Điện Thoại</span>
+                        <span className="text-sm font-bold">{booking.user?.phone || 'N/A'}</span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <span className="block text-[10px] uppercase tracking-widest font-bold opacity-50 mb-1">Nhận Phòng</span>
+                          <span className="text-sm font-bold">{formatDate(booking.checkInDate)} {booking.checkInTime}</span>
+                        </div>
+                        <div>
+                          <span className="block text-[10px] uppercase tracking-widest font-bold opacity-50 mb-1">Trả Phòng</span>
+                          <span className="text-sm font-bold">{formatDate(booking.checkOutDate)} {booking.checkOutTime}</span>
+                        </div>
+                      </div>
+                      <div>
+                        <span className="block text-[10px] uppercase tracking-widest font-bold opacity-50 mb-1">Tổng Thanh Toán</span>
+                        <span className="text-lg font-bold text-primary">{formatPrice(booking.totalPrice)}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-8 pt-6 border-t border-dashed border-black/10 dark:border-white/10 text-center">
+                    <p className="text-xs font-bold uppercase tracking-widest opacity-70 mb-2">Vui lòng xuất trình thẻ này tại lễ tân</p>
+                    <p className="text-[10px] opacity-50 italic">Please present this ticket at the reception desk</p>
+                  </div>
+                </div>
+              </div>
+
               {/* Action Buttons */}
-              <div className="grid grid-cols-1 gap-4">
+              <div className="grid grid-cols-1 gap-4 print:hidden">
                 <button
-                  onClick={handleDownloadReceipt}
-                  className="w-full py-4 px-6 border border-primary text-primary font-bold uppercase tracking-widest text-xs rounded-lg hover:bg-primary hover:text-white transition-all flex items-center justify-center gap-2"
-                >
-                  <span className="material-symbols-outlined text-sm">download</span>
-                  Tải Hóa Đơn
-                </button>
-                <button
-                  onClick={handleAddToCalendar}
+                  onClick={handlePrint}
                   className="w-full py-4 px-6 bg-primary text-white font-bold uppercase tracking-widest text-xs rounded-lg hover:brightness-110 transition-all shadow-lg shadow-primary/20 flex items-center justify-center gap-2"
                 >
-                  <span className="material-symbols-outlined text-sm">calendar_add_on</span>
-                  Thêm Vào Lịch
+                  <span className="material-symbols-outlined text-sm">print</span>
+                  In Thẻ Đặt Phòng
+                </button>
+                <button
+                  onClick={() => {
+                    alert('Vui lòng chụp màn hình hoặc lưu ảnh thẻ này lại!');
+                  }}
+                  className="w-full py-4 px-6 border border-primary text-primary font-bold uppercase tracking-widest text-xs rounded-lg hover:bg-primary hover:text-white transition-all flex items-center justify-center gap-2"
+                >
+                  <span className="material-symbols-outlined text-sm">save_alt</span>
+                  Lưu Ảnh Thẻ
                 </button>
               </div>
 
@@ -414,8 +480,8 @@ const BookingSuccess = () => {
           <div>
             <h4 className="text-xs font-bold uppercase tracking-widest mb-6">Địa Chỉ</h4>
             <p className="text-sm opacity-70 leading-relaxed">
-              123 Đường Biển,<br/>
-              Thành Phố, Việt Nam<br/>
+              123 Đường Biển,<br />
+              Thành Phố, Việt Nam<br />
             </p>
             <a className="text-xs font-bold text-primary mt-4 inline-block underline underline-offset-4" href="#">
               Xem Bản Đồ

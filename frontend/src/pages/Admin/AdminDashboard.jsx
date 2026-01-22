@@ -102,20 +102,20 @@ const AdminDashboard = () => {
   const handleCheckIn = async (bookingId, e, force = false) => {
     e?.stopPropagation() // Ngăn click event bubble lên div cha
     if (!bookingId) return
-    
+
     try {
       setCheckingIn(bookingId)
       setCheckInError('')
       setCheckInSuccess('')
-      
-      await api.put(`/bookings/${bookingId}/status`, { 
+
+      await api.put(`/bookings/${bookingId}/status`, {
         status: 'checked-in',
         force: force
       })
-      
+
       setCheckInSuccess('Đã nhận phòng thành công')
       fetchData() // Refresh data
-      
+
       setTimeout(() => {
         setCheckInSuccess('')
       }, 3000)
@@ -123,22 +123,22 @@ const AdminDashboard = () => {
       // Xử lý trường hợp có booking sớm hơn (409 Conflict)
       if (error.response?.status === 409 && error.response?.data?.requiresConfirmation) {
         setEarlierBookingInfo(error.response.data.earlierBooking)
-        setPendingCheckIn({ 
-          bookingId, 
-          currentBooking: error.response.data.currentBooking 
+        setPendingCheckIn({
+          bookingId,
+          currentBooking: error.response.data.currentBooking
         })
         setShowCheckInConfirmModal(true)
         setCheckingIn(null)
         return
       }
-      
+
       // Xử lý trường hợp phòng đã được thuê (400 Bad Request)
       if (error.response?.status === 400) {
         const errorMessage = error.response?.data?.message || 'Không thể nhận phòng'
         // Kiểm tra xem có phải lỗi phòng đã được thuê không
-        if (errorMessage.includes('đang được sử dụng') || 
-            errorMessage.includes('đã được thuê') || 
-            errorMessage.includes('đang được sử dụng bởi booking')) {
+        if (errorMessage.includes('đang được sử dụng') ||
+          errorMessage.includes('đã được thuê') ||
+          errorMessage.includes('đang được sử dụng bởi booking')) {
           setRoomOccupiedError({
             message: errorMessage,
             bookingId: bookingId
@@ -148,7 +148,7 @@ const AdminDashboard = () => {
           return
         }
       }
-      
+
       setCheckInError(error.response?.data?.message || 'Không thể nhận phòng')
       setTimeout(() => {
         setCheckInError('')
@@ -162,19 +162,19 @@ const AdminDashboard = () => {
 
   const handleConfirmEarlyCheckIn = async () => {
     if (!pendingCheckIn) return
-    
+
     try {
       setCheckingIn(pendingCheckIn.bookingId)
       setShowCheckInConfirmModal(false)
-      
-      await api.put(`/bookings/${pendingCheckIn.bookingId}/status`, { 
+
+      await api.put(`/bookings/${pendingCheckIn.bookingId}/status`, {
         status: 'checked-in',
         force: true // Force check-in sau khi admin xác nhận
       })
-      
+
       setCheckInSuccess('Đã nhận phòng thành công')
       fetchData() // Refresh data
-      
+
       setTimeout(() => {
         setCheckInSuccess('')
       }, 3000)
@@ -198,20 +198,20 @@ const AdminDashboard = () => {
   }
   const handleStatusChange = async (newStatus) => {
     if (!selectedRoom) return
-    
+
     try {
       setUpdatingStatus(true)
       await api.put(`/rooms/${selectedRoom._id}`, {
         ...selectedRoom,
         status: newStatus
       })
-      
+
       // Cập nhật local state
-      setRooms(rooms.map(r => 
+      setRooms(rooms.map(r =>
         r._id === selectedRoom._id ? { ...r, status: newStatus } : r
       ))
       setSelectedRoom({ ...selectedRoom, status: newStatus })
-      
+
       // Hiển thị thông báo thành công
       alert('Đã cập nhật trạng thái phòng thành công!')
     } catch (error) {
@@ -237,23 +237,23 @@ const AdminDashboard = () => {
 
   const handleChangeRoom = async () => {
     if (!selectedNewRoom || !selectedBookingForChange) return
-    
+
     try {
       setUpdatingStatus(true)
       const response = await api.put(`/bookings/${selectedBookingForChange._id}/change-room`, {
         newRoomId: selectedNewRoom
       })
-      
+
       // Kiểm tra xem có hoàn tiền không
       if (response.data.refundInfo) {
         alert(`Đã đổi phòng thành công!\n\n${response.data.refundInfo.message}`)
       } else {
         alert('Đã đổi phòng thành công!')
       }
-      
+
       // Refresh data
       await fetchData()
-      
+
       // Close modal
       setShowChangeRoomModal(false)
       setShowModal(false)
@@ -268,7 +268,7 @@ const AdminDashboard = () => {
   }
 
   const groupRoomsByFloor = () => {
-    const filtered = rooms.filter(room => 
+    const filtered = rooms.filter(room =>
       room.roomNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
       room.floor.toLowerCase().includes(searchQuery.toLowerCase())
     )
@@ -325,6 +325,110 @@ const AdminDashboard = () => {
   const statusCounts = getStatusCounts()
   const floorGroups = groupRoomsByFloor()
 
+
+  const formatPrice = (price) => {
+    return new Intl.NumberFormat('vi-VN', {
+      style: 'currency',
+      currency: 'VND'
+    }).format(price)
+  }
+
+  const printInvoice = (booking) => {
+    const invoiceWindow = window.open('', '_blank')
+    const invoiceHTML = generateInvoiceHTML(booking)
+    invoiceWindow.document.write(invoiceHTML)
+    invoiceWindow.document.close()
+    setTimeout(() => {
+      invoiceWindow.print()
+    }, 250)
+  }
+
+  // Payment Modal States
+  const [showPaymentModal, setShowPaymentModal] = useState(false)
+  const [selectedBookingForPayment, setSelectedBookingForPayment] = useState(null)
+  const [paymentAmount, setPaymentAmount] = useState(0)
+  const [paymentMethodDetail, setPaymentMethodDetail] = useState('cash')
+
+  const openPaymentModal = (booking) => {
+    setSelectedBookingForPayment(booking)
+    setPaymentAmount(booking.remainingAmount !== undefined ? booking.remainingAmount : booking.totalPrice)
+    setPaymentMethodDetail('cash')
+    setShowPaymentModal(true)
+  }
+
+  const handlePaymentSubmit = async () => {
+    if (!selectedBookingForPayment) return
+    try {
+      setCheckingIn(selectedBookingForPayment._id)
+
+      const response = await api.put(`/bookings/${selectedBookingForPayment._id}/payment`, {
+        amount: paymentAmount,
+        paymentMethodDetail: paymentMethodDetail
+      })
+
+      const updatedBooking = response.data
+
+      setCheckInSuccess('Thanh toán thành công')
+      setShowPaymentModal(false)
+
+      // In hóa đơn sau khi thanh toán xong
+      setTimeout(() => {
+        printInvoice(updatedBooking || selectedBookingForPayment)
+      }, 500)
+
+      fetchData()
+
+      setTimeout(() => setCheckInSuccess(''), 3000)
+    } catch (error) {
+      alert(error.response?.data?.message || 'Lỗi thanh toán')
+    } finally {
+      setCheckingIn(null)
+    }
+  }
+
+  const handlePayment = (bookingId, e) => {
+    e?.stopPropagation()
+    const booking = bookings.find(b => b._id === bookingId)
+    if (booking) openPaymentModal(booking)
+  }
+
+  const handleCheckOut = async (bookingId, e) => {
+    e?.stopPropagation()
+    if (!bookingId) return
+
+    if (!window.confirm('Xác nhận trả phòng và in hóa đơn?')) return
+
+    try {
+      setCheckingIn(bookingId)
+      // Lấy thông tin booking trước khi cập nhật
+      const bookingToCheckOut = bookings.find(b => b._id === bookingId)
+
+      await api.put(`/bookings/${bookingId}/status`, {
+        status: 'checked-out'
+      })
+
+      setCheckInSuccess('Đã trả phòng thành công')
+
+      // In hóa đơn
+      setTimeout(() => {
+        printInvoice(bookingToCheckOut)
+      }, 500)
+
+      fetchData() // Refresh data
+
+      setTimeout(() => {
+        setCheckInSuccess('')
+      }, 3000)
+    } catch (error) {
+      setCheckInError(error.response?.data?.message || 'Không thể trả phòng')
+      setTimeout(() => {
+        setCheckInError('')
+      }, 5000)
+    } finally {
+      setCheckingIn(null)
+    }
+  }
+
   return (
     <div className="min-h-screen bg-background-light dark:bg-background-dark">
       {/* Header */}
@@ -355,6 +459,87 @@ const AdminDashboard = () => {
         </div>
       </header>
 
+      {/* Payment Modal */}
+      {showPaymentModal && selectedBookingForPayment && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 text-charcoal dark:text-white">
+          <div className="bg-white dark:bg-gray-900 w-full max-w-md rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200 border border-primary/20">
+            <div className="p-6 border-b border-black/5 dark:border-white/5 bg-primary/5">
+              <h3 className="text-xl font-bold font-serif text-primary">Thanh Toán</h3>
+              <p className="text-sm opacity-60">Mã: {selectedBookingForPayment.bookingCode}</p>
+            </div>
+
+            <div className="p-6 space-y-5">
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-widest opacity-60 mb-2">Số tiền thanh toán</label>
+                <div className="flex items-center bg-background-light dark:bg-white/5 rounded-lg px-4 border border-black/10 dark:border-white/10">
+                  <span className="text-base font-bold mr-2 text-primary">₫</span>
+                  <input
+                    type="number"
+                    value={paymentAmount}
+                    onChange={(e) => setPaymentAmount(Number(e.target.value))}
+                    className="w-full py-3 bg-transparent outline-none font-bold text-lg text-charcoal dark:text-white"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-widest opacity-60 mb-2">Phương thức</label>
+                <div className="grid grid-cols-3 gap-2">
+                  <button
+                    onClick={() => setPaymentMethodDetail('cash')}
+                    className={`py-3 rounded-lg text-xs font-bold uppercase tracking-wider border transition-all ${paymentMethodDetail === 'cash'
+                      ? 'bg-primary text-white border-primary shadow-lg shadow-primary/20'
+                      : 'bg-transparent border-black/10 dark:border-white/10 hover:border-primary/50 text-charcoal/60 dark:text-white/60'
+                      }`}
+                  >
+                    Tiền Mặt
+                  </button>
+                  <button
+                    onClick={() => setPaymentMethodDetail('transfer')}
+                    className={`py-3 rounded-lg text-xs font-bold uppercase tracking-wider border transition-all ${paymentMethodDetail === 'transfer'
+                      ? 'bg-primary text-white border-primary shadow-lg shadow-primary/20'
+                      : 'bg-transparent border-black/10 dark:border-white/10 hover:border-primary/50 text-charcoal/60 dark:text-white/60'
+                      }`}
+                  >
+                    CK
+                  </button>
+                  <button
+                    onClick={() => setPaymentMethodDetail('card')}
+                    className={`py-3 rounded-lg text-xs font-bold uppercase tracking-wider border transition-all ${paymentMethodDetail === 'card'
+                      ? 'bg-primary text-white border-primary shadow-lg shadow-primary/20'
+                      : 'bg-transparent border-black/10 dark:border-white/10 hover:border-primary/50 text-charcoal/60 dark:text-white/60'
+                      }`}
+                  >
+                    Thẻ
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-6 border-t border-black/5 dark:border-white/5 flex gap-3 bg-background-light/50 dark:bg-white/5">
+              <button
+                onClick={() => setShowPaymentModal(false)}
+                className="flex-1 py-3 bg-white dark:bg-white/5 border border-black/10 dark:border-white/10 rounded-xl font-bold uppercase tracking-wider text-xs hover:bg-gray-50 dark:hover:bg-white/10 transition-colors text-charcoal dark:text-white"
+              >
+                Hủy
+              </button>
+              <button
+                onClick={handlePaymentSubmit}
+                className="flex-1 py-3 bg-primary text-white rounded-xl font-bold uppercase tracking-wider text-xs shadow-lg shadow-primary/20 hover:brightness-110 transition-all flex items-center justify-center gap-2"
+                disabled={checkingIn === selectedBookingForPayment._id}
+              >
+                {checkingIn === selectedBookingForPayment._id ? (
+                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                ) : (
+                  <span className="material-symbols-outlined text-sm">check</span>
+                )}
+                Xác Nhận
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Main Content */}
       <div className="max-w-7xl mx-auto px-6 py-12">
         {/* Toggle Buttons */}
@@ -366,22 +551,20 @@ const AdminDashboard = () => {
           <div className="flex gap-3">
             <button
               onClick={() => setShowRoomGrid(true)}
-              className={`px-6 py-3 rounded-lg text-xs font-bold uppercase tracking-widest transition-all ${
-                showRoomGrid
-                  ? 'bg-primary text-white shadow-lg'
-                  : 'bg-white dark:bg-charcoal border border-primary/20 text-charcoal dark:text-white hover:border-primary'
-              }`}
+              className={`px-6 py-3 rounded-lg text-xs font-bold uppercase tracking-widest transition-all ${showRoomGrid
+                ? 'bg-primary text-white shadow-lg'
+                : 'bg-white dark:bg-charcoal border border-primary/20 text-charcoal dark:text-white hover:border-primary'
+                }`}
             >
               <span className="material-symbols-outlined text-sm align-middle mr-2">grid_view</span>
               Sơ Đồ Phòng
             </button>
             <button
               onClick={() => setShowRoomGrid(false)}
-              className={`px-6 py-3 rounded-lg text-xs font-bold uppercase tracking-widest transition-all ${
-                !showRoomGrid
-                  ? 'bg-primary text-white shadow-lg'
-                  : 'bg-white dark:bg-charcoal border border-primary/20 text-charcoal dark:text-white hover:border-primary'
-              }`}
+              className={`px-6 py-3 rounded-lg text-xs font-bold uppercase tracking-widest transition-all ${!showRoomGrid
+                ? 'bg-primary text-white shadow-lg'
+                : 'bg-white dark:bg-charcoal border border-primary/20 text-charcoal dark:text-white hover:border-primary'
+                }`}
             >
               <span className="material-symbols-outlined text-sm align-middle mr-2">dashboard</span>
               Quản Lý
@@ -473,7 +656,7 @@ const AdminDashboard = () => {
                         {floorRooms.map((room) => {
                           const statusInfo = getStatusInfo(room.status)
                           const booking = getRoomBooking(room._id)
-                          
+
                           return (
                             <div
                               key={room._id}
@@ -528,29 +711,31 @@ const AdminDashboard = () => {
                   </h3>
                   <span className="material-symbols-outlined text-primary">schedule</span>
                 </div>
-                
+
                 {(() => {
                   // Lấy các booking sẽ nhận phòng (loại bỏ đã hoàn thành và đã trả phòng)
                   const now = new Date()
                   const next24Hours = new Date(now.getTime() + 24 * 60 * 60 * 1000)
-                  
+
                   const upcomingBookings = bookings
                     .filter(booking => {
-                      // Loại bỏ các booking đã hoàn thành hoặc đã trả phòng
+                      // Loại bỏ các booking đã hoàn thành hoặc đã trả phòng (checked-out)
+                      // User yêu cầu: Trả phòng là ẩn luôn
                       if (['completed', 'checked-out', 'cancelled'].includes(booking.status)) {
                         return false
                       }
-                      
+
                       if (!booking.checkInDate) return false
-                      const checkInDate = new Date(booking.checkInDate)
-                      const checkInDateTime = new Date(`${checkInDate.toISOString().split('T')[0]}T${booking.checkInTime || '00:00'}`)
-                      
-                      // Chỉ lấy các booking sẽ nhận phòng:
-                      // - Đã checked-in (đang ở phòng, chưa trả)
-                      // - Hoặc check-in trong tương lai (pending, confirmed, payment-pending)
+
+                      // Logic hiển thị:
+                      // 1. Checked-in: Đang ở
+                      // 2. Checked-out + Unpaid: Chờ thanh toán
+                      // 3. Confirmed / Payment-pending: Sắp tới
+                      // 4. LOẠI BỎ 'pending' (Chưa xác nhận) theo yêu cầu
                       return (
-                        booking.status === 'checked-in' || // Đã nhận phòng, chưa trả
-                        (['pending', 'confirmed', 'payment-pending'].includes(booking.status) && checkInDateTime >= now)
+                        booking.status === 'checked-in' ||
+                        (booking.status === 'checked-out' && booking.paymentStatus !== 'paid') ||
+                        ['confirmed', 'payment-pending'].includes(booking.status)
                       )
                     })
                     .sort((a, b) => {
@@ -558,7 +743,7 @@ const AdminDashboard = () => {
                       const dateB = new Date(`${new Date(b.checkInDate).toISOString().split('T')[0]}T${b.checkInTime || '00:00'}`)
                       return dateA - dateB
                     })
-                    .slice(0, 10) // Chỉ lấy 10 booking gần nhất
+                    .slice(0, 100) // Tăng giới hạn hiển thị để không bị sót
 
                   if (upcomingBookings.length === 0) {
                     return (
@@ -576,7 +761,7 @@ const AdminDashboard = () => {
                         const checkInDateTime = new Date(`${checkInDate.toISOString().split('T')[0]}T${booking.checkInTime || '00:00'}`)
                         const isToday = checkInDate.toDateString() === now.toDateString()
                         const isSoon = checkInDateTime <= new Date(now.getTime() + 2 * 60 * 60 * 1000) // Trong 2 giờ tới
-                        
+
                         const getStatusBadge = (status) => {
                           if (status === 'checked-in') return { text: 'Đã Nhận', color: 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400' }
                           if (status === 'confirmed') return { text: 'Đã Xác Nhận', color: 'bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400' }
@@ -584,17 +769,16 @@ const AdminDashboard = () => {
                           if (status === 'payment-pending') return { text: 'Chờ Thanh Toán', color: 'bg-orange-100 text-orange-800 dark:bg-orange-900/20 dark:text-orange-400' }
                           return { text: status, color: 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-400' }
                         }
-                        
+
                         const statusBadge = getStatusBadge(booking.status)
 
                         return (
                           <div
                             key={booking._id}
-                            className={`p-4 rounded-lg border transition-all hover:shadow-md cursor-pointer ${
-                              isSoon 
-                                ? 'bg-primary/5 border-primary/30 dark:bg-primary/10' 
-                                : 'bg-background-light dark:bg-background-dark border-charcoal/10 dark:border-white/10'
-                            }`}
+                            className={`p-4 rounded-lg border transition-all hover:shadow-md cursor-pointer ${isSoon
+                              ? 'bg-primary/5 border-primary/30 dark:bg-primary/10'
+                              : 'bg-background-light dark:bg-background-dark border-charcoal/10 dark:border-white/10'
+                              }`}
                             onClick={() => {
                               setSelectedRoom(booking.room)
                               setShowModal(true)
@@ -618,16 +802,16 @@ const AdminDashboard = () => {
                                 {statusBadge.text}
                               </span>
                             </div>
-                            
+
                             <div className="space-y-1 text-xs">
                               <div className="flex items-center gap-2">
                                 <span className="material-symbols-outlined text-primary text-sm">login</span>
                                 <span className="text-charcoal dark:text-white">
                                   <span className="font-medium">
-                                    {isToday ? 'Hôm nay' : new Date(booking.checkInDate).toLocaleDateString('vi-VN', { 
-                                      day: '2-digit', 
-                                      month: '2-digit', 
-                                      year: 'numeric' 
+                                    {isToday ? 'Hôm nay' : new Date(booking.checkInDate).toLocaleDateString('vi-VN', {
+                                      day: '2-digit',
+                                      month: '2-digit',
+                                      year: 'numeric'
                                     })}
                                   </span>
                                   {' '}
@@ -638,10 +822,10 @@ const AdminDashboard = () => {
                                 <span className="material-symbols-outlined text-primary text-sm">logout</span>
                                 <span className="text-charcoal dark:text-white">
                                   <span className="font-medium">
-                                    {new Date(booking.checkOutDate).toLocaleDateString('vi-VN', { 
-                                      day: '2-digit', 
-                                      month: '2-digit', 
-                                      year: 'numeric' 
+                                    {new Date(booking.checkOutDate).toLocaleDateString('vi-VN', {
+                                      day: '2-digit',
+                                      month: '2-digit',
+                                      year: 'numeric'
                                     })}
                                   </span>
                                   {' '}
@@ -657,18 +841,22 @@ const AdminDashboard = () => {
                                 </div>
                               )}
                             </div>
-                            
-                            {/* Nút Nhận Phòng */}
+
+                            {/* Actions: Nhận Phòng / Trả Phòng / Thanh Toán */}
                             {(() => {
-                              // Hiển thị nút nhận phòng khi:
-                              // - Booking online: status = 'confirmed' và bookingConfirmed = true
-                              // - Booking cash: status = 'confirmed'
-                              const canCheckIn = booking.status === 'confirmed' && 
-                                (booking.paymentMethod === 'cash' || 
-                                 (booking.paymentMethod === 'online' && booking.bookingConfirmed))
-                              
-                              if (!canCheckIn) return null
-                              
+                              // Logic Check-in:
+                              const canCheckIn = (booking.status === 'confirmed' || booking.status === 'pending') &&
+                                (booking.paymentMethod === 'cash' ||
+                                  (booking.paymentMethod === 'online' && booking.bookingConfirmed))
+
+                              // Logic Check-out:
+                              const canCheckOut = booking.status === 'checked-in'
+
+                              // Logic Payment:
+                              const canPayment = booking.status === 'checked-out' && booking.paymentStatus !== 'paid'
+
+                              if (!canCheckIn && !canCheckOut && !canPayment) return null
+
                               return (
                                 <div className="mt-3 pt-3 border-t border-charcoal/10 dark:border-white/10">
                                   {checkInError && checkingIn === booking._id && (
@@ -677,23 +865,66 @@ const AdminDashboard = () => {
                                   {checkInSuccess && checkingIn === booking._id && (
                                     <p className="text-xs text-green-600 dark:text-green-400 mb-2">{checkInSuccess}</p>
                                   )}
-                                  <button
-                                    onClick={(e) => handleCheckIn(booking._id, e)}
-                                    disabled={checkingIn === booking._id}
-                                    className="w-full py-2 px-3 bg-primary hover:bg-primary/90 text-white rounded-lg text-xs font-bold uppercase tracking-wider transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                                  >
-                                    {checkingIn === booking._id ? (
-                                      <>
-                                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                                        <span>Đang xử lý...</span>
-                                      </>
-                                    ) : (
-                                      <>
-                                        <span className="material-symbols-outlined text-sm">login</span>
-                                        <span>Nhận Phòng</span>
-                                      </>
-                                    )}
-                                  </button>
+
+                                  {canCheckIn && (
+                                    <button
+                                      onClick={(e) => handleCheckIn(booking._id, e)}
+                                      disabled={checkingIn === booking._id}
+                                      className="w-full py-2 px-3 bg-primary hover:bg-primary/90 text-white rounded-lg text-xs font-bold uppercase tracking-wider transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                                    >
+                                      {checkingIn === booking._id ? (
+                                        <>
+                                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                          <span>Đang xử lý...</span>
+                                        </>
+                                      ) : (
+                                        <>
+                                          <span className="material-symbols-outlined text-sm">login</span>
+                                          <span>Nhận Phòng</span>
+                                        </>
+                                      )}
+                                    </button>
+                                  )}
+
+                                  {canCheckOut && (
+                                    <button
+                                      onClick={(e) => handleCheckOut(booking._id, e)}
+                                      disabled={checkingIn === booking._id}
+                                      className="w-full py-2 px-3 bg-orange-600 hover:bg-orange-700 text-white rounded-lg text-xs font-bold uppercase tracking-wider transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                                    >
+                                      {checkingIn === booking._id ? (
+                                        <>
+                                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                          <span>Đang xử lý...</span>
+                                        </>
+                                      ) : (
+                                        <>
+                                          <span className="material-symbols-outlined text-sm">logout</span>
+                                          <span>Trả Phòng</span>
+                                        </>
+                                      )}
+                                    </button>
+                                  )}
+
+                                  {canPayment && (
+                                    <button
+                                      onClick={(e) => handlePayment(booking._id, e)}
+                                      disabled={checkingIn === booking._id}
+                                      className="w-full py-2 px-3 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-bold uppercase tracking-wider transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                                    >
+                                      {checkingIn === booking._id ? (
+                                        <>
+                                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                          <span>Đang xử lý...</span>
+                                        </>
+                                      ) : (
+                                        <>
+                                          <span className="material-symbols-outlined text-sm">payments</span>
+                                          <span>Thanh Toán</span>
+                                        </>
+                                      )}
+                                    </button>
+                                  )}
                                 </div>
                               )
                             })()}
@@ -711,211 +942,211 @@ const AdminDashboard = () => {
           <>
             {/* Quick Stats */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
-          <div className="bg-white dark:bg-charcoal rounded-xl shadow-luxury p-6 border border-primary/10">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-xs font-bold uppercase tracking-widest text-charcoal/60 dark:text-white/60">Tổng Người Dùng</h3>
-              <span className="material-symbols-outlined text-primary text-2xl">people</span>
-            </div>
-            <p className="serif-heading text-3xl text-charcoal dark:text-white">-</p>
-            <p className="text-xs text-charcoal/40 dark:text-white/40 mt-2">Xem tất cả người dùng</p>
-          </div>
+              <div className="bg-white dark:bg-charcoal rounded-xl shadow-luxury p-6 border border-primary/10">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-xs font-bold uppercase tracking-widest text-charcoal/60 dark:text-white/60">Tổng Người Dùng</h3>
+                  <span className="material-symbols-outlined text-primary text-2xl">people</span>
+                </div>
+                <p className="serif-heading text-3xl text-charcoal dark:text-white">-</p>
+                <p className="text-xs text-charcoal/40 dark:text-white/40 mt-2">Xem tất cả người dùng</p>
+              </div>
 
-          <div className="bg-white dark:bg-charcoal rounded-xl shadow-luxury p-6 border border-primary/10">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-xs font-bold uppercase tracking-widest text-charcoal/60 dark:text-white/60">Người Dùng Hoạt Động</h3>
-              <span className="material-symbols-outlined text-primary text-2xl">check_circle</span>
-            </div>
-            <p className="serif-heading text-3xl text-charcoal dark:text-white">-</p>
-            <p className="text-xs text-charcoal/40 dark:text-white/40 mt-2">Đang hoạt động</p>
-          </div>
+              <div className="bg-white dark:bg-charcoal rounded-xl shadow-luxury p-6 border border-primary/10">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-xs font-bold uppercase tracking-widest text-charcoal/60 dark:text-white/60">Người Dùng Hoạt Động</h3>
+                  <span className="material-symbols-outlined text-primary text-2xl">check_circle</span>
+                </div>
+                <p className="serif-heading text-3xl text-charcoal dark:text-white">-</p>
+                <p className="text-xs text-charcoal/40 dark:text-white/40 mt-2">Đang hoạt động</p>
+              </div>
 
-          <div className="bg-white dark:bg-charcoal rounded-xl shadow-luxury p-6 border border-primary/10">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-xs font-bold uppercase tracking-widest text-charcoal/60 dark:text-white/60">Người Dùng Admin</h3>
-              <span className="material-symbols-outlined text-primary text-2xl">admin_panel_settings</span>
+              <div className="bg-white dark:bg-charcoal rounded-xl shadow-luxury p-6 border border-primary/10">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-xs font-bold uppercase tracking-widest text-charcoal/60 dark:text-white/60">Người Dùng Admin</h3>
+                  <span className="material-symbols-outlined text-primary text-2xl">admin_panel_settings</span>
+                </div>
+                <p className="serif-heading text-3xl text-charcoal dark:text-white">-</p>
+                <p className="text-xs text-charcoal/40 dark:text-white/40 mt-2">Quản trị viên</p>
+              </div>
             </div>
-            <p className="serif-heading text-3xl text-charcoal dark:text-white">-</p>
-            <p className="text-xs text-charcoal/40 dark:text-white/40 mt-2">Quản trị viên</p>
-          </div>
-        </div>
 
-        {/* Quick Actions */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <Link
-            to="/admin/users"
-            className="bg-white dark:bg-charcoal rounded-xl shadow-luxury p-8 border border-primary/10 hover:border-primary transition-all group"
-          >
-            <div className="flex items-center gap-4 mb-4">
-              <div className="size-16 rounded-full bg-primary/10 flex items-center justify-center text-primary group-hover:bg-primary/20 transition-colors">
-                <span className="material-symbols-outlined text-3xl">people</span>
-              </div>
-              <div>
-                <h3 className="serif-heading text-2xl mb-2 text-charcoal dark:text-white group-hover:text-primary transition-colors">
-                  Quản Lý Người Dùng
-                </h3>
-                <p className="text-charcoal/60 dark:text-white/60 text-sm">
-                  Xem, chỉnh sửa và xóa tài khoản người dùng
-                </p>
-              </div>
-            </div>
-          </Link>
+            {/* Quick Actions */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <Link
+                to="/admin/users"
+                className="bg-white dark:bg-charcoal rounded-xl shadow-luxury p-8 border border-primary/10 hover:border-primary transition-all group"
+              >
+                <div className="flex items-center gap-4 mb-4">
+                  <div className="size-16 rounded-full bg-primary/10 flex items-center justify-center text-primary group-hover:bg-primary/20 transition-colors">
+                    <span className="material-symbols-outlined text-3xl">people</span>
+                  </div>
+                  <div>
+                    <h3 className="serif-heading text-2xl mb-2 text-charcoal dark:text-white group-hover:text-primary transition-colors">
+                      Quản Lý Người Dùng
+                    </h3>
+                    <p className="text-charcoal/60 dark:text-white/60 text-sm">
+                      Xem, chỉnh sửa và xóa tài khoản người dùng
+                    </p>
+                  </div>
+                </div>
+              </Link>
 
-          <Link
-            to="/admin/roomcategories"
-            className="bg-white dark:bg-charcoal rounded-xl shadow-luxury p-8 border border-primary/10 hover:border-primary transition-all group"
-          >
-            <div className="flex items-center gap-4 mb-4">
-              <div className="size-16 rounded-full bg-primary/10 flex items-center justify-center text-primary group-hover:bg-primary/20 transition-colors">
-                <span className="material-symbols-outlined text-3xl">category</span>
-              </div>
-              <div>
-                <h3 className="serif-heading text-2xl mb-2 text-charcoal dark:text-white group-hover:text-primary transition-colors">
-                  Quản Lý Danh Mục Phòng
-                </h3>
-                <p className="text-charcoal/60 dark:text-white/60 text-sm">
-                  Quản lý các danh mục phòng của khách sạn
-                </p>
-              </div>
-            </div>
-          </Link>
+              <Link
+                to="/admin/roomcategories"
+                className="bg-white dark:bg-charcoal rounded-xl shadow-luxury p-8 border border-primary/10 hover:border-primary transition-all group"
+              >
+                <div className="flex items-center gap-4 mb-4">
+                  <div className="size-16 rounded-full bg-primary/10 flex items-center justify-center text-primary group-hover:bg-primary/20 transition-colors">
+                    <span className="material-symbols-outlined text-3xl">category</span>
+                  </div>
+                  <div>
+                    <h3 className="serif-heading text-2xl mb-2 text-charcoal dark:text-white group-hover:text-primary transition-colors">
+                      Quản Lý Danh Mục Phòng
+                    </h3>
+                    <p className="text-charcoal/60 dark:text-white/60 text-sm">
+                      Quản lý các danh mục phòng của khách sạn
+                    </p>
+                  </div>
+                </div>
+              </Link>
 
-          <Link
-            to="/admin/roomtypes"
-            className="bg-white dark:bg-charcoal rounded-xl shadow-luxury p-8 border border-primary/10 hover:border-primary transition-all group"
-          >
-            <div className="flex items-center gap-4 mb-4">
-              <div className="size-16 rounded-full bg-primary/10 flex items-center justify-center text-primary group-hover:bg-primary/20 transition-colors">
-                <span className="material-symbols-outlined text-3xl">bed</span>
-              </div>
-              <div>
-                <h3 className="serif-heading text-2xl mb-2 text-charcoal dark:text-white group-hover:text-primary transition-colors">
-                  Quản Lý Loại Phòng
-                </h3>
-                <p className="text-charcoal/60 dark:text-white/60 text-sm">
-                  Quản lý các loại phòng trong từng danh mục
-                </p>
-              </div>
-            </div>
-          </Link>
+              <Link
+                to="/admin/roomtypes"
+                className="bg-white dark:bg-charcoal rounded-xl shadow-luxury p-8 border border-primary/10 hover:border-primary transition-all group"
+              >
+                <div className="flex items-center gap-4 mb-4">
+                  <div className="size-16 rounded-full bg-primary/10 flex items-center justify-center text-primary group-hover:bg-primary/20 transition-colors">
+                    <span className="material-symbols-outlined text-3xl">bed</span>
+                  </div>
+                  <div>
+                    <h3 className="serif-heading text-2xl mb-2 text-charcoal dark:text-white group-hover:text-primary transition-colors">
+                      Quản Lý Loại Phòng
+                    </h3>
+                    <p className="text-charcoal/60 dark:text-white/60 text-sm">
+                      Quản lý các loại phòng trong từng danh mục
+                    </p>
+                  </div>
+                </div>
+              </Link>
 
-          <Link
-            to="/admin/rooms"
-            className="bg-white dark:bg-charcoal rounded-xl shadow-luxury p-8 border border-primary/10 hover:border-primary transition-all group"
-          >
-            <div className="flex items-center gap-4 mb-4">
-              <div className="size-16 rounded-full bg-primary/10 flex items-center justify-center text-primary group-hover:bg-primary/20 transition-colors">
-                <span className="material-symbols-outlined text-3xl">door_front</span>
-              </div>
-              <div>
-                <h3 className="serif-heading text-2xl mb-2 text-charcoal dark:text-white group-hover:text-primary transition-colors">
-                  Quản Lý Phòng
-                </h3>
-                <p className="text-charcoal/60 dark:text-white/60 text-sm">
-                  Quản lý tất cả các phòng của khách sạn
-                </p>
-              </div>
+              <Link
+                to="/admin/rooms"
+                className="bg-white dark:bg-charcoal rounded-xl shadow-luxury p-8 border border-primary/10 hover:border-primary transition-all group"
+              >
+                <div className="flex items-center gap-4 mb-4">
+                  <div className="size-16 rounded-full bg-primary/10 flex items-center justify-center text-primary group-hover:bg-primary/20 transition-colors">
+                    <span className="material-symbols-outlined text-3xl">door_front</span>
+                  </div>
+                  <div>
+                    <h3 className="serif-heading text-2xl mb-2 text-charcoal dark:text-white group-hover:text-primary transition-colors">
+                      Quản Lý Phòng
+                    </h3>
+                    <p className="text-charcoal/60 dark:text-white/60 text-sm">
+                      Quản lý tất cả các phòng của khách sạn
+                    </p>
+                  </div>
+                </div>
+              </Link>
             </div>
-          </Link>
-        </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
-          <Link
-            to="/admin/amenities"
-            className="bg-white dark:bg-charcoal rounded-xl shadow-luxury p-8 border border-primary/10 hover:border-primary transition-all group"
-          >
-            <div className="flex items-center gap-4 mb-4">
-              <div className="size-16 rounded-full bg-primary/10 flex items-center justify-center text-primary group-hover:bg-primary/20 transition-colors">
-                <span className="material-symbols-outlined text-3xl">room_service</span>
-              </div>
-              <div>
-                <h3 className="serif-heading text-2xl mb-2 text-charcoal dark:text-white group-hover:text-primary transition-colors">
-                  Quản Lý Tiện Ích
-                </h3>
-                <p className="text-charcoal/60 dark:text-white/60 text-sm">
-                  Quản lý các tiện ích của khách sạn
-                </p>
-              </div>
-            </div>
-          </Link>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
+              <Link
+                to="/admin/amenities"
+                className="bg-white dark:bg-charcoal rounded-xl shadow-luxury p-8 border border-primary/10 hover:border-primary transition-all group"
+              >
+                <div className="flex items-center gap-4 mb-4">
+                  <div className="size-16 rounded-full bg-primary/10 flex items-center justify-center text-primary group-hover:bg-primary/20 transition-colors">
+                    <span className="material-symbols-outlined text-3xl">room_service</span>
+                  </div>
+                  <div>
+                    <h3 className="serif-heading text-2xl mb-2 text-charcoal dark:text-white group-hover:text-primary transition-colors">
+                      Quản Lý Tiện Ích
+                    </h3>
+                    <p className="text-charcoal/60 dark:text-white/60 text-sm">
+                      Quản lý các tiện ích của khách sạn
+                    </p>
+                  </div>
+                </div>
+              </Link>
 
-          <Link
-            to="/admin/services"
-            className="bg-white dark:bg-charcoal rounded-xl shadow-luxury p-8 border border-primary/10 hover:border-primary transition-all group"
-          >
-            <div className="flex items-center gap-4 mb-4">
-              <div className="size-16 rounded-full bg-primary/10 flex items-center justify-center text-primary group-hover:bg-primary/20 transition-colors">
-                <span className="material-symbols-outlined text-3xl">restaurant</span>
-              </div>
-              <div>
-                <h3 className="serif-heading text-2xl mb-2 text-charcoal dark:text-white group-hover:text-primary transition-colors">
-                  Quản Lý Dịch Vụ
-                </h3>
-                <p className="text-charcoal/60 dark:text-white/60 text-sm">
-                  Quản lý các dịch vụ của khách sạn
-                </p>
-              </div>
+              <Link
+                to="/admin/services"
+                className="bg-white dark:bg-charcoal rounded-xl shadow-luxury p-8 border border-primary/10 hover:border-primary transition-all group"
+              >
+                <div className="flex items-center gap-4 mb-4">
+                  <div className="size-16 rounded-full bg-primary/10 flex items-center justify-center text-primary group-hover:bg-primary/20 transition-colors">
+                    <span className="material-symbols-outlined text-3xl">restaurant</span>
+                  </div>
+                  <div>
+                    <h3 className="serif-heading text-2xl mb-2 text-charcoal dark:text-white group-hover:text-primary transition-colors">
+                      Quản Lý Dịch Vụ
+                    </h3>
+                    <p className="text-charcoal/60 dark:text-white/60 text-sm">
+                      Quản lý các dịch vụ của khách sạn
+                    </p>
+                  </div>
+                </div>
+              </Link>
             </div>
-          </Link>
-        </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
-          <Link
-            to="/admin/bookings"
-            className="bg-white dark:bg-charcoal rounded-xl shadow-luxury p-8 border border-primary/10 hover:border-primary transition-all group"
-          >
-            <div className="flex items-center gap-4 mb-4">
-              <div className="size-16 rounded-full bg-primary/10 flex items-center justify-center text-primary group-hover:bg-primary/20 transition-colors">
-                <span className="material-symbols-outlined text-3xl">event_note</span>
-              </div>
-              <div>
-                <h3 className="serif-heading text-2xl mb-2 text-charcoal dark:text-white group-hover:text-primary transition-colors">
-                  Quản Lý Đặt Phòng
-                </h3>
-                <p className="text-charcoal/60 dark:text-white/60 text-sm">
-                  Quản lý tất cả các đặt phòng của khách sạn
-                </p>
-              </div>
-            </div>
-          </Link>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
+              <Link
+                to="/admin/bookings"
+                className="bg-white dark:bg-charcoal rounded-xl shadow-luxury p-8 border border-primary/10 hover:border-primary transition-all group"
+              >
+                <div className="flex items-center gap-4 mb-4">
+                  <div className="size-16 rounded-full bg-primary/10 flex items-center justify-center text-primary group-hover:bg-primary/20 transition-colors">
+                    <span className="material-symbols-outlined text-3xl">event_note</span>
+                  </div>
+                  <div>
+                    <h3 className="serif-heading text-2xl mb-2 text-charcoal dark:text-white group-hover:text-primary transition-colors">
+                      Quản Lý Đặt Phòng
+                    </h3>
+                    <p className="text-charcoal/60 dark:text-white/60 text-sm">
+                      Quản lý tất cả các đặt phòng của khách sạn
+                    </p>
+                  </div>
+                </div>
+              </Link>
 
-          <Link
-            to="/admin/bookings/create"
-            className="bg-white dark:bg-charcoal rounded-xl shadow-luxury p-8 border border-primary/10 hover:border-primary transition-all group"
-          >
-            <div className="flex items-center gap-4 mb-4">
-              <div className="size-16 rounded-full bg-primary/10 flex items-center justify-center text-primary group-hover:bg-primary/20 transition-colors">
-                <span className="material-symbols-outlined text-3xl">add_circle</span>
-              </div>
-              <div>
-                <h3 className="serif-heading text-2xl mb-2 text-charcoal dark:text-white group-hover:text-primary transition-colors">
-                  Tạo Đặt Phòng
-                </h3>
-                <p className="text-charcoal/60 dark:text-white/60 text-sm">
-                  Đặt phòng cho người dùng hoặc khách vãng lai
-                </p>
-              </div>
-            </div>
-          </Link>
+              <Link
+                to="/admin/bookings/create"
+                className="bg-white dark:bg-charcoal rounded-xl shadow-luxury p-8 border border-primary/10 hover:border-primary transition-all group"
+              >
+                <div className="flex items-center gap-4 mb-4">
+                  <div className="size-16 rounded-full bg-primary/10 flex items-center justify-center text-primary group-hover:bg-primary/20 transition-colors">
+                    <span className="material-symbols-outlined text-3xl">add_circle</span>
+                  </div>
+                  <div>
+                    <h3 className="serif-heading text-2xl mb-2 text-charcoal dark:text-white group-hover:text-primary transition-colors">
+                      Tạo Đặt Phòng
+                    </h3>
+                    <p className="text-charcoal/60 dark:text-white/60 text-sm">
+                      Đặt phòng cho người dùng hoặc khách vãng lai
+                    </p>
+                  </div>
+                </div>
+              </Link>
 
-          <Link
-            to="/admin/profile"
-            className="bg-white dark:bg-charcoal rounded-xl shadow-luxury p-8 border border-primary/10 hover:border-primary transition-all group"
-          >
-            <div className="flex items-center gap-4 mb-4">
-              <div className="size-16 rounded-full bg-primary/10 flex items-center justify-center text-primary group-hover:bg-primary/20 transition-colors">
-                <span className="material-symbols-outlined text-3xl">person</span>
-              </div>
-              <div>
-                <h3 className="serif-heading text-2xl mb-2 text-charcoal dark:text-white group-hover:text-primary transition-colors">
-                  Thông Tin Cá Nhân
-                </h3>
-                <p className="text-charcoal/60 dark:text-white/60 text-sm">
-                  Cập nhật thông tin cá nhân của bạn
-                </p>
-              </div>
+              <Link
+                to="/admin/profile"
+                className="bg-white dark:bg-charcoal rounded-xl shadow-luxury p-8 border border-primary/10 hover:border-primary transition-all group"
+              >
+                <div className="flex items-center gap-4 mb-4">
+                  <div className="size-16 rounded-full bg-primary/10 flex items-center justify-center text-primary group-hover:bg-primary/20 transition-colors">
+                    <span className="material-symbols-outlined text-3xl">person</span>
+                  </div>
+                  <div>
+                    <h3 className="serif-heading text-2xl mb-2 text-charcoal dark:text-white group-hover:text-primary transition-colors">
+                      Thông Tin Cá Nhân
+                    </h3>
+                    <p className="text-charcoal/60 dark:text-white/60 text-sm">
+                      Cập nhật thông tin cá nhân của bạn
+                    </p>
+                  </div>
+                </div>
+              </Link>
             </div>
-          </Link>
-        </div>
           </>
         )}
       </div>
@@ -969,7 +1200,7 @@ const AdminDashboard = () => {
                       </div>
                     )
                   }
-                  
+
                   return (
                     <div className="space-y-4">
                       {/* Guest Info */}
@@ -1016,9 +1247,9 @@ const AdminDashboard = () => {
                             Loại Đặt
                           </p>
                           <p className="text-sm font-medium text-charcoal dark:text-white">
-                            {booking.bookingType === 'daily' ? 'Theo ngày' : 
-                             booking.bookingType === 'hourly' ? 'Theo giờ' : 
-                             'Qua đêm'}
+                            {booking.bookingType === 'daily' ? 'Theo ngày' :
+                              booking.bookingType === 'hourly' ? 'Theo giờ' :
+                                'Qua đêm'}
                           </p>
                         </div>
                         <div>
@@ -1067,11 +1298,10 @@ const AdminDashboard = () => {
                       <button
                         onClick={() => handleStatusChange('Available')}
                         disabled={updatingStatus || selectedRoom.status === 'Available'}
-                        className={`py-2 px-3 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${
-                          selectedRoom.status === 'Available'
-                            ? 'bg-green-100 text-green-800 border-2 border-green-500'
-                            : 'bg-white dark:bg-charcoal border border-green-200 text-green-700 hover:bg-green-50 dark:hover:bg-green-900/20'
-                        } disabled:opacity-50 disabled:cursor-not-allowed`}
+                        className={`py-2 px-3 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${selectedRoom.status === 'Available'
+                          ? 'bg-green-100 text-green-800 border-2 border-green-500'
+                          : 'bg-white dark:bg-charcoal border border-green-200 text-green-700 hover:bg-green-50 dark:hover:bg-green-900/20'
+                          } disabled:opacity-50 disabled:cursor-not-allowed`}
                       >
                         <span className="material-symbols-outlined text-sm block mb-1">check_circle</span>
                         Trống
@@ -1079,11 +1309,10 @@ const AdminDashboard = () => {
                       <button
                         onClick={() => handleStatusChange('Dirty')}
                         disabled={updatingStatus || selectedRoom.status === 'Dirty'}
-                        className={`py-2 px-3 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${
-                          selectedRoom.status === 'Dirty'
-                            ? 'bg-amber-100 text-amber-800 border-2 border-amber-500'
-                            : 'bg-white dark:bg-charcoal border border-amber-200 text-amber-700 hover:bg-amber-50 dark:hover:bg-amber-900/20'
-                        } disabled:opacity-50 disabled:cursor-not-allowed`}
+                        className={`py-2 px-3 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${selectedRoom.status === 'Dirty'
+                          ? 'bg-amber-100 text-amber-800 border-2 border-amber-500'
+                          : 'bg-white dark:bg-charcoal border border-amber-200 text-amber-700 hover:bg-amber-50 dark:hover:bg-amber-900/20'
+                          } disabled:opacity-50 disabled:cursor-not-allowed`}
                       >
                         <span className="material-symbols-outlined text-sm block mb-1">cleaning_services</span>
                         Dọn
@@ -1091,11 +1320,10 @@ const AdminDashboard = () => {
                       <button
                         onClick={() => handleStatusChange('Maintenance')}
                         disabled={updatingStatus || selectedRoom.status === 'Maintenance'}
-                        className={`py-2 px-3 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${
-                          selectedRoom.status === 'Maintenance'
-                            ? 'bg-red-100 text-red-800 border-2 border-red-500'
-                            : 'bg-white dark:bg-charcoal border border-red-200 text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20'
-                        } disabled:opacity-50 disabled:cursor-not-allowed`}
+                        className={`py-2 px-3 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${selectedRoom.status === 'Maintenance'
+                          ? 'bg-red-100 text-red-800 border-2 border-red-500'
+                          : 'bg-white dark:bg-charcoal border border-red-200 text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20'
+                          } disabled:opacity-50 disabled:cursor-not-allowed`}
                       >
                         <span className="material-symbols-outlined text-sm block mb-1">build</span>
                         Bảo Trì
@@ -1177,11 +1405,11 @@ const AdminDashboard = () => {
                   {/* Change Room Button - Only show for Available rooms */}
                   {selectedRoom.status === 'Available' && (() => {
                     // Tìm booking của phòng này
-                    const roomBooking = bookings.find(b => 
+                    const roomBooking = bookings.find(b =>
                       (b.room?._id === selectedRoom._id || b.room === selectedRoom._id) &&
                       ['confirmed', 'checked-in'].includes(b.status)
                     )
-                    
+
                     if (roomBooking) {
                       return (
                         <div className="mt-4 pt-4 border-t border-primary/10">
@@ -1236,7 +1464,7 @@ const AdminDashboard = () => {
                 <p className="text-sm text-blue-800 dark:text-blue-300 flex items-start gap-2">
                   <span className="material-symbols-outlined text-base">info</span>
                   <span>
-                    <strong>Phòng hiện tại:</strong> Phòng {selectedRoom?.roomNumber}<br/>
+                    <strong>Phòng hiện tại:</strong> Phòng {selectedRoom?.roomNumber}<br />
                     <strong>Khách:</strong> {selectedBookingForChange.user?.fullName || selectedBookingForChange.user?.username}
                   </span>
                 </p>
@@ -1333,7 +1561,7 @@ const AdminDashboard = () => {
                 <p className="text-sm text-yellow-800 dark:text-yellow-300 mb-3">
                   Có một booking khác ở cùng phòng với thời gian check-in <strong>sớm hơn</strong> nhưng <strong>chưa nhận phòng</strong>:
                 </p>
-                
+
                 <div className="space-y-2 text-sm">
                   <div className="flex items-start gap-2">
                     <span className="material-symbols-outlined text-yellow-600 dark:text-yellow-400 text-sm mt-0.5">confirmation_number</span>
@@ -1342,7 +1570,7 @@ const AdminDashboard = () => {
                       <span className="ml-2 font-mono text-yellow-800 dark:text-yellow-300">{earlierBookingInfo.bookingCode}</span>
                     </div>
                   </div>
-                  
+
                   <div className="flex items-start gap-2">
                     <span className="material-symbols-outlined text-yellow-600 dark:text-yellow-400 text-sm mt-0.5">person</span>
                     <div>
@@ -1350,7 +1578,7 @@ const AdminDashboard = () => {
                       <span className="ml-2 text-yellow-800 dark:text-yellow-300">{earlierBookingInfo.guestName}</span>
                     </div>
                   </div>
-                  
+
                   <div className="flex items-start gap-2">
                     <span className="material-symbols-outlined text-yellow-600 dark:text-yellow-400 text-sm mt-0.5">schedule</span>
                     <div>
@@ -1358,7 +1586,7 @@ const AdminDashboard = () => {
                       <span className="ml-2 text-yellow-800 dark:text-yellow-300">{earlierBookingInfo.checkInDisplay}</span>
                     </div>
                   </div>
-                  
+
                   <div className="flex items-start gap-2 mt-3 pt-3 border-t border-yellow-200 dark:border-yellow-800">
                     <span className="material-symbols-outlined text-primary text-sm mt-0.5">login</span>
                     <div>
@@ -1463,6 +1691,189 @@ const AdminDashboard = () => {
       )}
     </div>
   )
+}
+
+const generateInvoiceHTML = (booking) => {
+  const totalNights = Math.ceil((new Date(booking.checkOutDate) - new Date(booking.checkInDate)) / (1000 * 60 * 60 * 24)) || 1
+
+  // Format helpers for independent function
+  const formatPrice = (price) => {
+    return new Intl.NumberFormat('vi-VN', {
+      style: 'currency',
+      currency: 'VND'
+    }).format(price)
+  }
+
+  const formatDate = (dateString) => {
+    const date = new Date(dateString)
+    return date.toLocaleDateString('vi-VN', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric'
+    })
+  }
+
+  return `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <title>Hóa Đơn - ${booking.bookingCode}</title>
+        <style>
+          @media print {
+            @page { margin: 1cm; }
+            body { margin: 0; }
+          }
+          body {
+            font-family: 'Arial', sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+          }
+          .header {
+            text-align: center;
+            border-bottom: 3px solid #bea06a;
+            padding-bottom: 20px;
+            margin-bottom: 30px;
+          }
+          .logo {
+            font-size: 32px;
+            font-weight: bold;
+            color: #bea06a;
+            margin-bottom: 5px;
+          }
+          .subtitle {
+            font-size: 14px;
+            color: #666;
+          }
+          .invoice-title {
+            font-size: 24px;
+            font-weight: bold;
+            margin: 20px 0;
+          }
+          .info-section {
+            margin-bottom: 30px;
+          }
+          .info-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid #eee;
+          }
+          .label {
+            font-weight: bold;
+            color: #666;
+          }
+          table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+          }
+          th {
+            background-color: #bea06a;
+            color: white;
+            padding: 12px;
+            text-align: left;
+          }
+          td {
+            padding: 10px 12px;
+            border-bottom: 1px solid #eee;
+          }
+          .total-row {
+            font-weight: bold;
+            font-size: 18px;
+            background-color: #f9f9f9;
+          }
+          .footer {
+            margin-top: 40px;
+            text-align: center;
+            font-size: 12px;
+            color: #666;
+            border-top: 2px solid #eee;
+            padding-top: 20px;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <div class="logo">AURELIUS GRAND</div>
+          <div class="subtitle">Luxury Hotel & Resort</div>
+        </div>
+        
+        <div class="invoice-title">HÓA ĐƠN THANH TOÁN</div>
+        
+        <div class="info-section">
+          <div class="info-row">
+            <span class="label">Mã đặt phòng:</span>
+            <span>${booking.bookingCode}</span>
+          </div>
+          <div class="info-row">
+            <span class="label">Ngày in:</span>
+            <span>${new Date().toLocaleString('vi-VN')}</span>
+          </div>
+          <div class="info-row">
+            <span class="label">Khách hàng:</span>
+            <span>${booking.user?.fullName || booking.user?.username || 'Khách vãng lai'}</span>
+          </div>
+          <div class="info-row">
+            <span class="label">Số điện thoại:</span>
+            <span>${booking.user?.phone || 'N/A'}</span>
+          </div>
+        </div>
+        
+        <table>
+          <thead>
+            <tr>
+              <th>Mô tả</th>
+              <th style="text-align: center;">Số lượng</th>
+              <th style="text-align: right;">Đơn giá</th>
+              <th style="text-align: right;">Thành tiền</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>
+                <strong>Phòng ${booking.room?.roomNumber}</strong><br>
+                <small>${booking.room?.type?.name || ''}</small><br>
+                <small>Nhận: ${formatDate(booking.checkInDate)} ${booking.checkInTime}</small><br>
+                <small>Trả: ${formatDate(booking.checkOutDate)} ${booking.checkOutTime}</small>
+              </td>
+              <td style="text-align: center;">${totalNights} ${booking.bookingType === 'hourly' ? 'giờ' : 'đêm'}</td>
+              <td style="text-align: right;">${formatPrice(booking.roomPrice)}</td>
+              <td style="text-align: right;">${formatPrice(booking.roomPrice)}</td>
+            </tr>
+            ${booking.amenitiesPrice > 0 ? `
+            <tr>
+              <td>Tiện ích</td>
+              <td style="text-align: center;">-</td>
+              <td style="text-align: right;">-</td>
+              <td style="text-align: right;">${formatPrice(booking.amenitiesPrice)}</td>
+            </tr>
+            ` : ''}
+            ${booking.servicesPrice > 0 ? `
+            <tr>
+              <td>Dịch vụ</td>
+              <td style="text-align: center;">-</td>
+              <td style="text-align: right;">-</td>
+              <td style="text-align: right;">${formatPrice(booking.servicesPrice)}</td>
+            </tr>
+            ` : ''}
+            <tr class="total-row">
+              <td colspan="3" style="text-align: right;">Tổng cộng:</td>
+              <td style="text-align: right;">${formatPrice(booking.totalPrice)}</td>
+            </tr>
+          </tbody>
+        </table>
+        
+        <div class="footer">
+          <p><strong>Cảm ơn quý khách đã sử dụng dịch vụ của chúng tôi!</strong></p>
+          <p>Aurelius Grand Hotel | Hotline: 1900-xxxx | Email: info@aureliusgrand.com</p>
+        </div>
+      </body>
+      </html>
+    `
 }
 
 export default AdminDashboard

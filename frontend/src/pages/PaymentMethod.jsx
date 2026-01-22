@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import api from '../services/api'
+import axios from 'axios'
 import BookingHeader from '../components/BookingHeader'
 
 const PaymentMethod = () => {
@@ -13,19 +14,20 @@ const PaymentMethod = () => {
   const [error, setError] = useState('')
 
   useEffect(() => {
-    if (!user) {
-      navigate('/login')
-      return
-    }
-
     const pendingBooking = sessionStorage.getItem('pendingBooking')
     if (!pendingBooking) {
       navigate('/')
       return
     }
 
-    setBookingData(JSON.parse(pendingBooking))
-  }, [])
+    const data = JSON.parse(pendingBooking)
+    setBookingData(data)
+
+    // Nếu là khách vãng lai (không có user), chỉ cho phép thanh toán cash
+    if (!user && data.guestInfo) {
+      setSelectedMethod('cash')
+    }
+  }, [user, navigate])
 
   const formatPrice = (price) => {
     return new Intl.NumberFormat('vi-VN', {
@@ -41,23 +43,38 @@ const PaymentMethod = () => {
     setError('')
 
     try {
-      // Tạo booking với payment method
-      const bookingPayload = {
-        ...bookingData,
-        paymentMethod: selectedMethod
-      }
+      let response
 
-      const response = await api.post('/bookings', bookingPayload)
+      // Kiểm tra xem là khách đăng nhập hay khách vãng lai
+      if (user) {
+        // Khách đăng nhập: gọi API /bookings (cần authentication)
+        const bookingPayload = {
+          ...bookingData,
+          paymentMethod: selectedMethod
+        }
+        response = await api.post('/bookings', bookingPayload)
+      } else {
+        // Khách vãng lai: gọi API /bookings/public/guest-booking (không cần authentication)
+        const bookingPayload = {
+          ...bookingData,
+          paymentMethod: 'cash' // Luôn là cash cho khách vãng lai
+        }
+
+        // Dùng axios trực tiếp (không qua instance api) để tránh interceptor redirect 401
+        // nhưng vẫn dùng baseURL của server
+        const API_URL = 'http://localhost:5000/api';
+        response = await axios.post(`${API_URL}/bookings/public/guest-booking`, bookingPayload);
+      }
 
       // Xóa pending booking
       sessionStorage.removeItem('pendingBooking')
 
-      if (selectedMethod === 'online') {
-        // Chuyển đến trang thanh toán online
+      if (selectedMethod === 'online' && user) {
+        // Chuyển đến trang thanh toán online (chỉ cho khách đăng nhập)
         sessionStorage.setItem('bookingId', response.data._id)
         navigate('/booking/online-payment')
       } else {
-        // Thanh toán tại quầy: chuyển đến trang đợi xác nhận booking (không có bước xác nhận tiền)
+        // Thanh toán tại quầy: chuyển đến trang chờ admin xác nhận
         navigate(`/booking/confirmation-pending/${response.data._id}`)
       }
     } catch (error) {
@@ -99,18 +116,16 @@ const PaymentMethod = () => {
           {/* Cash Payment */}
           <div
             onClick={() => setSelectedMethod('cash')}
-            className={`p-8 bg-white dark:bg-background-dark rounded-2xl border-2 cursor-pointer transition-all shadow-sm hover:shadow-lg ${
-              selectedMethod === 'cash'
-                ? 'border-primary bg-primary/5 dark:bg-primary/10'
-                : 'border-black/5 dark:border-white/5 hover:border-primary/30'
-            }`}
+            className={`p-8 bg-white dark:bg-background-dark rounded-2xl border-2 cursor-pointer transition-all shadow-sm hover:shadow-lg ${selectedMethod === 'cash'
+              ? 'border-primary bg-primary/5 dark:bg-primary/10'
+              : 'border-black/5 dark:border-white/5 hover:border-primary/30'
+              }`}
           >
             <div className="flex items-start gap-6">
-              <div className={`mt-1 w-6 h-6 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${
-                selectedMethod === 'cash'
-                  ? 'border-primary'
-                  : 'border-black/20 dark:border-white/20'
-              }`}>
+              <div className={`mt-1 w-6 h-6 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${selectedMethod === 'cash'
+                ? 'border-primary'
+                : 'border-black/20 dark:border-white/20'
+                }`}>
                 {selectedMethod === 'cash' && (
                   <div className="w-3 h-3 rounded-full bg-primary"></div>
                 )}
@@ -121,56 +136,69 @@ const PaymentMethod = () => {
                   <span className="material-symbols-outlined text-2xl text-primary">payments</span>
                 </div>
                 <p className="text-sm opacity-60 leading-relaxed">
-                  Thanh toán trực tiếp khi nhận phòng. Bạn sẽ nhận mã đặt phòng ngay sau khi xác nhận. 
+                  Thanh toán trực tiếp khi nhận phòng. Bạn sẽ nhận mã đặt phòng ngay sau khi xác nhận.
                   Phương thức này phù hợp nếu bạn muốn thanh toán bằng tiền mặt hoặc thẻ tại khách sạn.
                 </p>
               </div>
             </div>
           </div>
 
-          {/* Online Payment */}
-          <div
-            onClick={() => setSelectedMethod('online')}
-            className={`p-8 bg-white dark:bg-background-dark rounded-2xl border-2 cursor-pointer transition-all shadow-sm hover:shadow-lg ${
-              selectedMethod === 'online'
+          {/* Online Payment - Chỉ hiển thị cho khách đăng nhập */}
+          {user && (
+            <div
+              onClick={() => setSelectedMethod('online')}
+              className={`p-8 bg-white dark:bg-background-dark rounded-2xl border-2 cursor-pointer transition-all shadow-sm hover:shadow-lg ${selectedMethod === 'online'
                 ? 'border-primary bg-primary/5 dark:bg-primary/10'
                 : 'border-black/5 dark:border-white/5 hover:border-primary/30'
-            }`}
-          >
-            <div className="flex items-start gap-6">
-              <div className={`mt-1 w-6 h-6 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${
-                selectedMethod === 'online'
+                }`}
+            >
+              <div className="flex items-start gap-6">
+                <div className={`mt-1 w-6 h-6 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${selectedMethod === 'online'
                   ? 'border-primary'
                   : 'border-black/20 dark:border-white/20'
-              }`}>
-                {selectedMethod === 'online' && (
-                  <div className="w-3 h-3 rounded-full bg-primary"></div>
-                )}
-              </div>
-              <div className="flex-1">
-                <div className="flex items-center gap-3 mb-2">
-                  <h3 className="text-2xl font-display">Thanh Toán Online</h3>
-                  <span className="material-symbols-outlined text-2xl text-primary">credit_card</span>
+                  }`}>
+                  {selectedMethod === 'online' && (
+                    <div className="w-3 h-3 rounded-full bg-primary"></div>
+                  )}
                 </div>
-                <p className="text-sm opacity-60 leading-relaxed mb-4">
-                  Đặt cọc 30% trực tuyến để đảm bảo đặt phòng. Thanh toán số tiền còn lại khi nhận phòng.
-                  Phương thức này giúp bạn giữ chỗ an toàn và linh hoạt.
-                </p>
-                <div className="bg-primary/10 dark:bg-primary/20 px-4 py-3 rounded-lg inline-block">
-                  <p className="text-[10px] uppercase tracking-widest font-bold opacity-60 mb-1">Số tiền đặt cọc</p>
-                  <p className="text-xl font-display font-bold text-primary">
-                    {formatPrice(Math.round(bookingData.totalPrice * 0.3))}
+                <div className="flex-1">
+                  <div className="flex items-center gap-3 mb-2">
+                    <h3 className="text-2xl font-display">Thanh Toán Online</h3>
+                    <span className="material-symbols-outlined text-2xl text-primary">credit_card</span>
+                  </div>
+                  <p className="text-sm opacity-60 leading-relaxed mb-4">
+                    Đặt cọc 30% trực tuyến để đảm bảo đặt phòng. Thanh toán số tiền còn lại khi nhận phòng.
+                    Phương thức này giúp bạn giữ chỗ an toàn và linh hoạt.
                   </p>
+                  <div className="bg-primary/10 dark:bg-primary/20 px-4 py-3 rounded-lg inline-block">
+                    <p className="text-[10px] uppercase tracking-widest font-bold opacity-60 mb-1">Số tiền đặt cọc</p>
+                    <p className="text-xl font-display font-bold text-primary">
+                      {formatPrice(Math.round(bookingData.totalPrice * 0.3))}
+                    </p>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
+          )}
+
+          {/* Thông báo cho khách vãng lai */}
+          {!user && (
+            <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-400 px-4 py-3 rounded-lg text-sm">
+              <div className="flex items-start gap-2">
+                <span className="material-symbols-outlined text-lg mt-0.5">info</span>
+                <div>
+                  <p className="font-medium mb-1">Lưu ý cho khách vãng lai:</p>
+                  <p className="text-xs opacity-80">Bạn chỉ có thể thanh toán bằng tiền mặt tại quầy. Để sử dụng thanh toán online, vui lòng đăng nhập hoặc tạo tài khoản.</p>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Price Summary */}
         <div className="bg-white dark:bg-background-dark rounded-2xl shadow-xl shadow-black/5 p-8 border border-black/10 dark:border-white/10 mb-8">
           <h3 className="text-xl font-display mb-6 pb-4 border-b border-black/5 dark:border-white/5">Tổng Thanh Toán</h3>
-          
+
           <div className="flex justify-between items-baseline mb-6">
             <span className="text-lg font-display">Tổng Cộng</span>
             <div className="text-right">
@@ -255,8 +283,8 @@ const PaymentMethod = () => {
           <div>
             <h4 className="text-xs font-bold uppercase tracking-widest mb-6">Địa Chỉ</h4>
             <p className="text-sm opacity-70 leading-relaxed">
-              123 Đường Biển<br/>
-              Thành Phố Đà Nẵng<br/>
+              123 Đường Biển<br />
+              Thành Phố Đà Nẵng<br />
               Việt Nam
             </p>
           </div>

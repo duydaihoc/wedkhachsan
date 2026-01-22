@@ -15,11 +15,6 @@ export default function BookingConfirmationPending() {
   const [refundRequired, setRefundRequired] = useState(false)
 
   useEffect(() => {
-    if (!user) {
-      navigate('/login')
-      return
-    }
-
     if (!id) {
       navigate('/')
       return
@@ -31,7 +26,7 @@ export default function BookingConfirmationPending() {
     const handleBookingUpdate = (data) => {
       if (data.booking._id === id) {
         setBooking(data.booking)
-        
+
         // Nếu booking bị hủy
         if (data.cancelled || data.booking.status === 'cancelled') {
           // Kiểm tra xem có cần hoàn tiền không
@@ -41,7 +36,7 @@ export default function BookingConfirmationPending() {
           // Không chuyển trang, chỉ cập nhật state để hiển thị thông báo hủy
           return
         }
-        
+
         // Nếu admin đã xác nhận booking (bookingConfirmed = true), chuyển đến trang success
         if (data.booking.bookingConfirmed && data.booking.status === 'confirmed') {
           // Chuyển đến trang success ngay lập tức (dùng window.location.replace để tránh nháy)
@@ -50,29 +45,43 @@ export default function BookingConfirmationPending() {
       }
     }
 
-    // Chỉ kết nối socket nếu chưa kết nối
-    if (socket.connected) {
-      socket.on('booking-updated', handleBookingUpdate)
-    } else {
-      socket.connect()
-      socket.once('connect', () => {
-        if (user?._id) {
-          socket.emit('join-user-room', user._id)
-        }
+    // Chỉ kết nối socket nếu có user (khách đã đăng nhập)
+    if (user) {
+      if (socket.connected) {
         socket.on('booking-updated', handleBookingUpdate)
-      })
+      } else {
+        socket.connect()
+        socket.once('connect', () => {
+          if (user?._id) {
+            socket.emit('join-user-room', user._id)
+          }
+          socket.on('booking-updated', handleBookingUpdate)
+        })
+      }
     }
 
     return () => {
-      socket.off('booking-updated', handleBookingUpdate)
+      if (user) {
+        socket.off('booking-updated', handleBookingUpdate)
+      }
     }
-  }, [id, user])
+  }, [id, user, navigate])
 
   const fetchBooking = async () => {
     try {
-      const response = await api.get(`/bookings/${id}`)
+      let response;
+      if (user) {
+        response = await api.get(`/bookings/${id}`)
+      } else {
+        // Dùng axios trực tiếp gọi API public cho khách vãng lai
+        const API_URL = 'http://localhost:5000/api';
+        const axiosLib = await import('axios');
+        const axios = axiosLib.default;
+        response = await axios.get(`${API_URL}/bookings/public/${id}`);
+      }
+
       setBooking(response.data)
-      
+
       // Kiểm tra trạng thái và chuyển trang nếu cần (chỉ khi reload trang)
       if (response.data.status === 'cancelled') {
         // Booking đã bị hủy, không chuyển trang, hiển thị thông báo hủy
@@ -82,8 +91,8 @@ export default function BookingConfirmationPending() {
           setRefundRequired(true)
         }
         // Không return, để tiếp tục render trang với thông báo hủy
-      } else if (response.data.status === 'payment-pending' || 
-          (response.data.status === 'pending' && response.data.paymentMethod === 'online')) {
+      } else if (response.data.status === 'payment-pending' ||
+        (response.data.status === 'pending' && response.data.paymentMethod === 'online')) {
         navigate(`/booking/payment-pending/${id}`, { replace: true })
         return
       } else if (response.data.bookingConfirmed && response.data.status === 'confirmed') {
@@ -124,17 +133,18 @@ export default function BookingConfirmationPending() {
   }
 
   const formatDate = (dateString) => {
-    return new Date(dateString).toLocaleDateString('vi-VN', { 
-      day: '2-digit', 
-      month: '2-digit', 
-      year: 'numeric' 
+    return new Date(dateString).toLocaleDateString('vi-VN', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric'
     })
   }
+
 
   return (
     <div className="min-h-screen bg-background-light dark:bg-background-dark">
       <BookingHeader currentStep={3} />
-      
+
       <main className="flex-grow max-w-6xl mx-auto px-6 lg:px-12 py-12">
         <div className="text-center mb-16">
           <div className="relative inline-flex items-center justify-center size-20 mb-6">
@@ -158,7 +168,7 @@ export default function BookingConfirmationPending() {
                     {booking.paymentMethod === 'online' && booking.paidAmount > 0 && (
                       <div className="mt-4 pt-4 border-t border-red-200 dark:border-red-800">
                         <p className="text-sm font-medium text-red-800 dark:text-red-300 leading-relaxed">
-                          {refundRequired 
+                          {refundRequired
                             ? '💰 Nhân viên sẽ sớm liên hệ bạn để hoàn tiền lại cho bạn, cảm ơn bạn.'
                             : '💰 Nhân viên sẽ liên hệ với bạn để hoàn tiền cọc phòng, cảm ơn bạn.'}
                         </p>
@@ -172,7 +182,7 @@ export default function BookingConfirmationPending() {
             <>
               <h1 className="text-5xl md:text-6xl font-display mb-4">Đang Chờ Xác Nhận Booking</h1>
               <p className="text-lg opacity-60 italic mb-8">
-                {booking.paymentMethod === 'online' 
+                {booking.paymentMethod === 'online'
                   ? 'Thanh toán đã được xác nhận. Đang chờ admin xác nhận booking.'
                   : 'Đang chờ admin xác nhận booking. Bạn sẽ thanh toán khi nhận phòng.'}
               </p>
@@ -190,7 +200,7 @@ export default function BookingConfirmationPending() {
           <div className="lg:col-span-7 space-y-8">
             <div className="bg-white dark:bg-zinc-900 rounded-2xl p-8 border border-black/5 shadow-sm">
               <h3 className="text-2xl font-display mb-8">Tóm Tắt Đặt Phòng</h3>
-              
+
               <div className="flex flex-col md:flex-row gap-8 pb-8 border-b border-black/5">
                 <div className="w-full md:w-48 h-32 rounded-lg overflow-hidden shrink-0">
                   <ImageWithFallback
@@ -224,10 +234,10 @@ export default function BookingConfirmationPending() {
                 </div>
                 <div className="flex-grow">
                   <h4 className="text-xl font-display mb-2">
-                    {booking.room?.name || 
-                     booking.room?.type?.name || 
-                     `Phòng ${booking.room?.roomNumber || 'N/A'}` || 
-                     'Phòng không xác định'}
+                    {booking.room?.name ||
+                      booking.room?.type?.name ||
+                      `Phòng ${booking.room?.roomNumber || 'N/A'}` ||
+                      'Phòng không xác định'}
                   </h4>
                   <div className="grid grid-cols-2 gap-4 text-sm">
                     <div>
@@ -245,8 +255,8 @@ export default function BookingConfirmationPending() {
                     <div>
                       <p className="opacity-50 uppercase text-[10px] font-bold tracking-widest mb-1">Loại Đặt</p>
                       <p className="font-medium">
-                        {booking.bookingType === 'hourly' ? 'Theo giờ' : 
-                         booking.bookingType === 'overnight' ? 'Qua đêm' : 'Theo ngày'}
+                        {booking.bookingType === 'hourly' ? 'Theo giờ' :
+                          booking.bookingType === 'overnight' ? 'Qua đêm' : 'Theo ngày'}
                       </p>
                     </div>
                   </div>
@@ -260,14 +270,14 @@ export default function BookingConfirmationPending() {
                     <span className="opacity-60">Tiền phòng</span>
                     <span className="font-medium">{formatPrice(booking.roomPrice)}</span>
                   </div>
-                  
+
                   {booking.amenities?.length > 0 && (
                     <div className="flex justify-between text-sm">
                       <span className="opacity-60">Tiện nghi</span>
                       <span className="font-medium">{formatPrice(booking.amenitiesPrice)}</span>
                     </div>
                   )}
-                  
+
                   {booking.services?.length > 0 && (
                     <div className="flex justify-between text-sm">
                       <span className="opacity-60">Dịch vụ</span>
@@ -276,28 +286,28 @@ export default function BookingConfirmationPending() {
                   )}
 
                   <div className="h-px bg-black/5 dark:bg-white/5 my-4"></div>
-                  
+
                   <div className="flex justify-between items-baseline">
                     <span className="text-lg font-display font-bold">Tổng Tiền</span>
                     <span className="text-3xl font-display font-bold text-primary">
                       {formatPrice(booking.totalPrice)}
                     </span>
                   </div>
-                  
+
                   {booking.paymentMethod === 'online' && (
                     <>
                       <div className="flex justify-between text-sm mt-2">
                         <span className="opacity-60">Đã thanh toán (Đặt cọc)</span>
                         <span className="font-medium text-green-600 dark:text-green-400">{formatPrice(booking.paidAmount)}</span>
                       </div>
-                      
+
                       {booking.remainingAmount > 0 && (
                         <div className="flex justify-between text-sm mt-2">
                           <span className="opacity-60">Còn lại</span>
                           <span className="font-medium">{formatPrice(booking.remainingAmount)}</span>
                         </div>
                       )}
-                      
+
                       <div className="mt-4 p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
                         <div className="flex items-center gap-2">
                           <span className="material-symbols-outlined text-green-600 dark:text-green-400">check_circle</span>
@@ -308,7 +318,7 @@ export default function BookingConfirmationPending() {
                       </div>
                     </>
                   )}
-                  
+
                   {booking.paymentMethod === 'cash' && (
                     <div className="mt-4 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
                       <div className="flex items-center gap-2">
@@ -327,7 +337,7 @@ export default function BookingConfirmationPending() {
           <div className="lg:col-span-5 space-y-8">
             <div className="bg-white dark:bg-zinc-900 rounded-2xl p-8 border border-black/5 shadow-sm">
               <h3 className="text-2xl font-display mb-6">Các Bước Tiếp Theo</h3>
-              
+
               <div className="space-y-6 mb-8">
                 {booking.paymentMethod === 'online' && (
                   <div className="flex gap-4">
@@ -383,21 +393,23 @@ export default function BookingConfirmationPending() {
               </div>
 
               <div className="grid grid-cols-1 gap-4">
-                <button 
+                <button
                   onClick={() => navigate('/')}
                   className="w-full py-4 px-6 bg-primary text-white font-bold uppercase tracking-widest text-xs rounded-lg hover:brightness-110 transition-all shadow-lg shadow-primary/20 flex items-center justify-center gap-2"
                 >
                   <span className="material-symbols-outlined text-sm">home</span>
                   Về Trang Chủ
                 </button>
-                
-                <button 
-                  onClick={() => navigate('/my-bookings')}
-                  className="w-full py-4 px-6 border border-primary text-primary font-bold uppercase tracking-widest text-xs rounded-lg hover:bg-primary hover:text-white transition-all flex items-center justify-center gap-2"
-                >
-                  <span className="material-symbols-outlined text-sm">book_online</span>
-                  Xem Booking Của Tôi
-                </button>
+
+                {user && (
+                  <button
+                    onClick={() => navigate('/my-bookings')}
+                    className="w-full py-4 px-6 border border-primary text-primary font-bold uppercase tracking-widest text-xs rounded-lg hover:bg-primary hover:text-white transition-all flex items-center justify-center gap-2"
+                  >
+                    <span className="material-symbols-outlined text-sm">book_online</span>
+                    Xem Booking Của Tôi
+                  </button>
+                )}
               </div>
 
               <div className="mt-8 pt-6 border-t border-black/5">

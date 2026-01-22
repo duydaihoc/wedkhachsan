@@ -13,7 +13,7 @@ const RoomDetail = () => {
   const [error, setError] = useState('')
   const [roomBookings, setRoomBookings] = useState([])
   const [showBookingSchedule, setShowBookingSchedule] = useState(false)
-  
+
   // Booking states
   const [bookingType, setBookingType] = useState('daily') // 'hourly', 'overnight', 'daily'
   const [checkIn, setCheckIn] = useState(new Date().toISOString().split('T')[0])
@@ -70,19 +70,19 @@ const RoomDetail = () => {
       const [hoursStr, minutesStr] = checkInTime.split(':')
       const checkInHours = parseInt(hoursStr, 10)
       const checkInMinutes = parseInt(minutesStr, 10)
-      
+
       // Tạo Date object từ checkIn và checkInTime (đúng local timezone)
       // Tạo Date ở local timezone để tránh timezone issues
       const [year, month, day] = checkIn.split('-').map(Number)
       const checkInDateTime = new Date(year, month - 1, day, checkInHours, checkInMinutes, 0, 0)
-      
+
       // Thêm số giờ vào checkInDateTime
       const checkOutDateTime = new Date(checkInDateTime)
       checkOutDateTime.setHours(checkOutDateTime.getHours() + hours)
-      
+
       // Cập nhật checkOutDate và checkOutTime
       setCheckOut(checkOutDateTime.toISOString().split('T')[0])
-      
+
       // Format checkOutTime (HH:MM)
       const checkOutHours = checkOutDateTime.getHours().toString().padStart(2, '0')
       const checkOutMinutes = checkOutDateTime.getMinutes().toString().padStart(2, '0')
@@ -124,7 +124,7 @@ const RoomDetail = () => {
       // Lấy bookings của phòng này trong 7 ngày tới
       const startDate = new Date().toISOString().split('T')[0]
       const endDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
-      
+
       const response = await api.get('/bookings/public/room-schedule', {
         params: {
           roomId: id,
@@ -180,7 +180,7 @@ const RoomDetail = () => {
   // Tính giá tiện ích đã chọn
   const calculateAmenitiesPrice = () => {
     if (!room?.amenities || selectedAmenities.length === 0) return 0
-    
+
     return selectedAmenities.reduce((total, amenityId) => {
       const amenity = room.amenities.find(a => (a._id || a) === amenityId)
       if (amenity && amenity.price) {
@@ -197,7 +197,7 @@ const RoomDetail = () => {
   // Tính giá dịch vụ đã chọn
   const calculateServicesPrice = () => {
     if (selectedServices.length === 0) return 0
-    
+
     return selectedServices.reduce((total, serviceId) => {
       const service = services.find(s => s._id === serviceId)
       if (service && service.price) {
@@ -241,7 +241,7 @@ const RoomDetail = () => {
   const getUpcomingBookings = () => {
     const today = new Date().toISOString().split('T')[0]
     const next7Days = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
-    
+
     return roomBookings
       .filter(booking => {
         const checkInDate = new Date(booking.checkInDate).toISOString().split('T')[0]
@@ -256,10 +256,10 @@ const RoomDetail = () => {
   // Tìm tất cả khung giờ còn trống trong 7 ngày tới
   const findAllAvailableSlots = () => {
     const availableSlots = []
-    const activeBookings = roomBookings.filter(b => 
+    const activeBookings = roomBookings.filter(b =>
       ['pending', 'confirmed', 'checked-in', 'payment-pending'].includes(b.status)
     )
-    
+
     // Helper function để so sánh thời gian
     const compareTime = (time1, time2) => {
       const [h1, m1] = time1.split(':').map(Number)
@@ -267,20 +267,20 @@ const RoomDetail = () => {
       if (h1 !== h2) return h1 - h2
       return m1 - m2
     }
-    
+
     for (let i = 0; i < 7; i++) {
       const date = new Date()
       date.setDate(date.getDate() + i)
       const dateStr = date.toISOString().split('T')[0]
       const dateFormatted = date.toLocaleDateString('vi-VN', { weekday: 'short', day: '2-digit', month: '2-digit' })
-      
+
       // Tìm tất cả các khoảng thời gian bận trong ngày này
       const busyPeriods = []
-      
+
       activeBookings.forEach(booking => {
         const checkInDate = new Date(booking.checkInDate).toISOString().split('T')[0]
         const checkOutDate = new Date(booking.checkOutDate).toISOString().split('T')[0]
-        
+
         // Nếu booking bắt đầu và kết thúc trong cùng ngày
         if (checkInDate === dateStr && checkOutDate === dateStr) {
           busyPeriods.push({
@@ -310,7 +310,7 @@ const RoomDetail = () => {
           })
         }
       })
-      
+
       // Nếu không có booking nào, cả ngày trống
       if (busyPeriods.length === 0) {
         availableSlots.push({
@@ -321,14 +321,14 @@ const RoomDetail = () => {
         })
         continue
       }
-      
+
       // Sắp xếp các khoảng bận theo thời gian bắt đầu
       busyPeriods.sort((a, b) => compareTime(a.start, b.start))
-      
+
       // Merge các khoảng bận trùng lặp hoặc liền kề
       const mergedBusyPeriods = []
       let currentBusy = busyPeriods[0]
-      
+
       for (let j = 1; j < busyPeriods.length; j++) {
         const nextBusy = busyPeriods[j]
         // Nếu khoảng tiếp theo bắt đầu trước hoặc ngay sau khi khoảng hiện tại kết thúc
@@ -342,10 +342,10 @@ const RoomDetail = () => {
         }
       }
       mergedBusyPeriods.push(currentBusy)
-      
+
       // Tìm các khoảng trống giữa các khoảng bận
       let currentTime = '00:00'
-      
+
       mergedBusyPeriods.forEach(busy => {
         // Nếu có khoảng trống trước khoảng bận
         if (compareTime(busy.start, currentTime) > 0) {
@@ -359,7 +359,7 @@ const RoomDetail = () => {
         // Cập nhật thời gian hiện tại sau khoảng bận
         currentTime = compareTime(busy.end, currentTime) > 0 ? busy.end : currentTime
       })
-      
+
       // Nếu còn thời gian trống sau khoảng bận cuối cùng
       if (compareTime(currentTime, '23:59') < 0) {
         availableSlots.push({
@@ -370,7 +370,7 @@ const RoomDetail = () => {
         })
       }
     }
-    
+
     return availableSlots
   }
 
@@ -384,7 +384,7 @@ const RoomDetail = () => {
       return start1 < end2 && start2 < end1
     }
 
-    const activeBookings = roomBookings.filter(b => 
+    const activeBookings = roomBookings.filter(b =>
       ['pending', 'confirmed', 'checked-in', 'payment-pending'].includes(b.status)
     )
 
@@ -453,17 +453,11 @@ const RoomDetail = () => {
   // Handle submit booking
   const handleSubmitBooking = (e) => {
     e.preventDefault()
-    
-    // Kiểm tra đăng nhập
-    if (!user) {
-      navigate('/login', { state: { from: `/rooms/${id}` } })
-      return
-    }
 
     // Tính checkOutDate và checkOutTime cho từng loại booking
     let finalCheckOutDate = checkOut
     let finalCheckOutTime = checkOutTime
-    
+
     if (bookingType === 'overnight') {
       // Overnight: ngày hôm sau lúc 12:00
       // Tạo Date ở local timezone để tránh timezone issues
@@ -484,20 +478,20 @@ const RoomDetail = () => {
           const [hoursStr, minutesStr] = checkInTime.split(':')
           const checkInHours = parseInt(hoursStr, 10)
           const checkInMinutes = parseInt(minutesStr, 10)
-          
+
           // Tạo Date ở local timezone để tránh timezone issues
           const [year, month, day] = checkIn.split('-').map(Number)
           const checkInDateTime = new Date(year, month - 1, day, checkInHours, checkInMinutes, 0, 0)
-          
+
           const checkOutDateTime = new Date(checkInDateTime)
           checkOutDateTime.setHours(checkOutDateTime.getHours() + hours)
-          
+
           // Format lại thành YYYY-MM-DD (local timezone)
           const checkOutYear = checkOutDateTime.getFullYear()
           const checkOutMonth = String(checkOutDateTime.getMonth() + 1).padStart(2, '0')
           const checkOutDay = String(checkOutDateTime.getDate()).padStart(2, '0')
           finalCheckOutDate = `${checkOutYear}-${checkOutMonth}-${checkOutDay}`
-          
+
           const checkOutHours = checkOutDateTime.getHours().toString().padStart(2, '0')
           const checkOutMinutes = checkOutDateTime.getMinutes().toString().padStart(2, '0')
           finalCheckOutTime = `${checkOutHours}:${checkOutMinutes}`
@@ -516,7 +510,7 @@ const RoomDetail = () => {
         const checkOutStr = `${new Date(b.checkOutDate).toLocaleDateString('vi-VN')} ${b.checkOutTime}`
         return `${checkInStr} - ${checkOutStr}`
       }).join(', ')
-      
+
       alert(`⚠️ Phòng đã được đặt trong khoảng thời gian này!\n\nKhung giờ bị trùng:\n${conflictDetails}\n\nVui lòng chọn thời gian khác hoặc xem các khung giờ còn trống bên dưới.`)
       return
     }
@@ -540,9 +534,16 @@ const RoomDetail = () => {
       totalPrice: calculateTotal()
     }
 
-    // Lưu vào sessionStorage và chuyển đến trang xác nhận
+    // Lưu vào sessionStorage
     sessionStorage.setItem('pendingBooking', JSON.stringify(bookingData))
-    navigate('/booking/confirm')
+
+    // Nếu user đã đăng nhập, chuyển đến trang xác nhận
+    // Nếu chưa đăng nhập, chuyển đến trang nhập thông tin khách vãng lai
+    if (user) {
+      navigate('/booking/confirm')
+    } else {
+      navigate('/booking/guest-info')
+    }
   }
 
   // Lấy amenities có giá (có thể chọn)
@@ -678,7 +679,7 @@ const RoomDetail = () => {
           <div className="grid grid-cols-12 gap-4 h-[600px] mb-12">
             {/* Main Image */}
             <div className="col-span-12 lg:col-span-8 rounded-xl overflow-hidden relative group">
-              <div 
+              <div
                 className="absolute inset-0 bg-cover bg-center transition-transform duration-700 group-hover:scale-105"
                 style={{ backgroundImage: `url(http://localhost:5000${mainImage})` }}
               ></div>
@@ -692,7 +693,7 @@ const RoomDetail = () => {
               <div className="hidden lg:grid col-span-4 grid-rows-2 gap-4">
                 {sideImages.map((image, index) => (
                   <div key={index} className="rounded-xl overflow-hidden relative group">
-                    <div 
+                    <div
                       className="absolute inset-0 bg-cover bg-center transition-transform duration-700 group-hover:scale-110"
                       style={{ backgroundImage: `url(http://localhost:5000${image})` }}
                     ></div>
@@ -736,9 +737,9 @@ const RoomDetail = () => {
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {imagesByCategory.living_room.map((image, index) => (
                     <div key={index} className="relative group rounded-xl overflow-hidden aspect-[4/3]">
-                      <img 
-                        src={`http://localhost:5000${image.url}`} 
-                        alt={image.label || 'Phòng khách'} 
+                      <img
+                        src={`http://localhost:5000${image.url}`}
+                        alt={image.label || 'Phòng khách'}
                         className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
                       />
                       {image.label && (
@@ -762,9 +763,9 @@ const RoomDetail = () => {
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {imagesByCategory.bedroom.map((image, index) => (
                     <div key={index} className="relative group rounded-xl overflow-hidden aspect-[4/3]">
-                      <img 
-                        src={`http://localhost:5000${image.url}`} 
-                        alt={image.label || 'Phòng ngủ'} 
+                      <img
+                        src={`http://localhost:5000${image.url}`}
+                        alt={image.label || 'Phòng ngủ'}
                         className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
                       />
                       {image.label && (
@@ -788,9 +789,9 @@ const RoomDetail = () => {
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {imagesByCategory.bathroom.map((image, index) => (
                     <div key={index} className="relative group rounded-xl overflow-hidden aspect-[4/3]">
-                      <img 
-                        src={`http://localhost:5000${image.url}`} 
-                        alt={image.label || 'Phòng tắm'} 
+                      <img
+                        src={`http://localhost:5000${image.url}`}
+                        alt={image.label || 'Phòng tắm'}
                         className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
                       />
                       {image.label && (
@@ -814,9 +815,9 @@ const RoomDetail = () => {
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {imagesByCategory.other.map((image, index) => (
                     <div key={index} className="relative group rounded-xl overflow-hidden aspect-[4/3]">
-                      <img 
-                        src={`http://localhost:5000${image.url}`} 
-                        alt={image.label || 'Khu vực khác'} 
+                      <img
+                        src={`http://localhost:5000${image.url}`}
+                        alt={image.label || 'Khu vực khác'}
                         className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
                       />
                       {image.label && (
@@ -872,11 +873,11 @@ const RoomDetail = () => {
               ) : (
                 <>
                   <p className="mb-6">
-                    Phòng {room.roomNumber} tại tầng {room.floor} mang đến không gian nghỉ dưỡng sang trọng và tiện nghi. 
+                    Phòng {room.roomNumber} tại tầng {room.floor} mang đến không gian nghỉ dưỡng sang trọng và tiện nghi.
                     Với thiết kế hiện đại và đầy đủ tiện ích, phòng này là lựa chọn lý tưởng cho kỳ nghỉ của bạn.
                   </p>
                   <p>
-                    Mỗi chi tiết đều được chăm chút kỹ lưỡng để mang đến trải nghiệm nghỉ dưỡng hoàn hảo nhất. 
+                    Mỗi chi tiết đều được chăm chút kỹ lưỡng để mang đến trải nghiệm nghỉ dưỡng hoàn hảo nhất.
                     Từ nội thất sang trọng đến dịch vụ chu đáo, chúng tôi cam kết mang đến sự thoải mái và tiện nghi tối đa.
                   </p>
                 </>
@@ -894,15 +895,14 @@ const RoomDetail = () => {
                     const amenityId = amenity._id || amenity
                     const isSelectable = amenity.price !== undefined && amenity.price > 0
                     const isSelected = selectedAmenities.includes(amenityId)
-                    
+
                     return (
-                      <div 
-                        key={amenityId} 
-                        className={`flex items-start gap-4 p-4 rounded-lg border transition-all ${
-                          isSelectable 
+                      <div
+                        key={amenityId}
+                        className={`flex items-start gap-4 p-4 rounded-lg border transition-all ${isSelectable
                             ? `cursor-pointer hover:border-primary ${isSelected ? 'border-primary bg-primary/5' : 'border-black/5 dark:border-white/5'}`
                             : ''
-                        }`}
+                          }`}
                         onClick={() => isSelectable && toggleAmenity(amenityId)}
                       >
                         {amenity.image ? (
@@ -929,11 +929,10 @@ const RoomDetail = () => {
                               )}
                             </div>
                             {isSelectable && (
-                              <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-all ${
-                                isSelected 
-                                  ? 'bg-primary border-primary' 
+                              <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-all ${isSelected
+                                  ? 'bg-primary border-primary'
                                   : 'border-black/20 dark:border-white/20'
-                              }`}>
+                                }`}>
                                 {isSelected && (
                                   <span className="material-symbols-outlined text-white text-sm">check</span>
                                 )}
@@ -986,7 +985,7 @@ const RoomDetail = () => {
                     </span>
                   </button>
                 </div>
-                
+
                 {showBookingSchedule && (
                   <div className="p-6 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl">
                     <div className="mb-4 flex items-start gap-3">
@@ -1031,7 +1030,7 @@ const RoomDetail = () => {
                                     if (slot.date && slot.startTime) {
                                       setCheckIn(slot.date)
                                       setCheckInTime(slot.startTime)
-                                      
+
                                       // Nếu là hourly và có endTime, tính số giờ
                                       if (bookingType === 'hourly' && slot.endTime) {
                                         const [startH, startM] = slot.startTime.split(':').map(Number)
@@ -1071,11 +1070,11 @@ const RoomDetail = () => {
               <div className="flex items-baseline justify-between mb-8">
                 <div>
                   <span className="text-4xl font-display font-bold">
-                    {bookingType === 'hourly' 
+                    {bookingType === 'hourly'
                       ? formatPrice(room.price?.firstHour || 0)
                       : bookingType === 'overnight'
-                      ? formatPrice(room.price?.overnight || 0)
-                      : formatPrice(room.price?.daily || 0)
+                        ? formatPrice(room.price?.overnight || 0)
+                        : formatPrice(room.price?.daily || 0)
                     }
                   </span>
                   <span className="text-sm opacity-60 ml-1">
@@ -1094,7 +1093,7 @@ const RoomDetail = () => {
                   <label className="block text-[10px] uppercase font-bold tracking-widest mb-2 opacity-50">
                     Loại Thuê
                   </label>
-                  <select 
+                  <select
                     value={bookingType}
                     onChange={(e) => {
                       setBookingType(e.target.value)
@@ -1149,7 +1148,7 @@ const RoomDetail = () => {
                         className="w-full bg-transparent border-none p-0 focus:ring-0 text-sm font-medium"
                       />
                       <p className="text-xs opacity-50 mt-1">
-                        Giờ đầu: {formatPrice(room.price?.firstHour || 0)}, 
+                        Giờ đầu: {formatPrice(room.price?.firstHour || 0)},
                         Giờ tiếp theo: {formatPrice(room.price?.nextHour || 0)}/giờ
                       </p>
                     </div>
@@ -1164,21 +1163,21 @@ const RoomDetail = () => {
                             const [hoursStr, minutesStr] = checkInTime.split(':')
                             const checkInHours = parseInt(hoursStr, 10)
                             const checkInMinutes = parseInt(minutesStr, 10)
-                            
+
                             const checkInDateTime = new Date(checkIn)
                             checkInDateTime.setHours(checkInHours, checkInMinutes, 0, 0)
-                            
+
                             const checkOutDateTime = new Date(checkInDateTime)
                             checkOutDateTime.setHours(checkOutDateTime.getHours() + hours)
-                            
+
                             const checkOutHours = checkOutDateTime.getHours().toString().padStart(2, '0')
                             const checkOutMinutes = checkOutDateTime.getMinutes().toString().padStart(2, '0')
-                            
-                            return `${checkOutDateTime.toLocaleDateString('vi-VN', { 
-                              weekday: 'long', 
-                              year: 'numeric', 
-                              month: 'long', 
-                              day: 'numeric' 
+
+                            return `${checkOutDateTime.toLocaleDateString('vi-VN', {
+                              weekday: 'long',
+                              year: 'numeric',
+                              month: 'long',
+                              day: 'numeric'
                             })} lúc ${checkOutHours}:${checkOutMinutes}`
                           } catch (error) {
                             return 'Vui lòng chọn đầy đủ thông tin'
@@ -1224,11 +1223,11 @@ const RoomDetail = () => {
                           const checkInDate = new Date(checkIn)
                           const nextDay = new Date(checkInDate)
                           nextDay.setDate(nextDay.getDate() + 1)
-                          return nextDay.toLocaleDateString('vi-VN', { 
-                            weekday: 'long', 
-                            year: 'numeric', 
-                            month: 'long', 
-                            day: 'numeric' 
+                          return nextDay.toLocaleDateString('vi-VN', {
+                            weekday: 'long',
+                            year: 'numeric',
+                            month: 'long',
+                            day: 'numeric'
                           })
                         })()} lúc 12:00
                       </p>
@@ -1307,7 +1306,7 @@ const RoomDetail = () => {
                       Người Lớn
                       {maxAdults && <span className="text-[9px] normal-case ml-1 opacity-40">(Tối đa: {maxAdults})</span>}
                     </label>
-                    <select 
+                    <select
                       value={adults}
                       onChange={(e) => {
                         const value = parseInt(e.target.value) || 1
@@ -1328,7 +1327,7 @@ const RoomDetail = () => {
                         Trẻ Em
                         <span className="text-[9px] normal-case ml-1 opacity-40">(Tối đa: {maxChildren})</span>
                       </label>
-                      <select 
+                      <select
                         value={children}
                         onChange={(e) => {
                           const value = parseInt(e.target.value) || 0
@@ -1359,11 +1358,10 @@ const RoomDetail = () => {
                           <div
                             key={service._id}
                             onClick={() => toggleService(service._id)}
-                            className={`flex items-center gap-3 p-2 rounded-lg border cursor-pointer transition-all ${
-                              isSelected
+                            className={`flex items-center gap-3 p-2 rounded-lg border cursor-pointer transition-all ${isSelected
                                 ? 'border-primary bg-primary/5'
                                 : 'border-black/10 dark:border-white/10 hover:border-primary/50'
-                            }`}
+                              }`}
                           >
                             {service.image ? (
                               <img
@@ -1390,11 +1388,10 @@ const RoomDetail = () => {
                                 {service.unit} • {service.type}
                               </p>
                             </div>
-                            <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-all ${
-                              isSelected
+                            <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-all ${isSelected
                                 ? 'bg-primary border-primary'
                                 : 'border-black/20 dark:border-white/20'
-                            }`}>
+                              }`}>
                               {isSelected && (
                                 <span className="material-symbols-outlined text-white text-sm">check</span>
                               )}
@@ -1411,11 +1408,11 @@ const RoomDetail = () => {
                   {/* Room Price */}
                   <div className="flex justify-between text-sm">
                     <span className="opacity-60">
-                      {bookingType === 'hourly' 
+                      {bookingType === 'hourly'
                         ? `${formatPrice(room.price?.firstHour || 0)} + ${hours > 1 ? `${hours - 1} giờ x ${formatPrice(room.price?.nextHour || 0)}` : ''}`
                         : bookingType === 'overnight'
-                        ? 'Qua đêm'
-                        : `${formatPrice(room.price?.daily || 0)} x ${calculateNights()} đêm`
+                          ? 'Qua đêm'
+                          : `${formatPrice(room.price?.daily || 0)} x ${calculateNights()} đêm`
                       }
                     </span>
                     <span className="font-medium">{formatPrice(calculateRoomPrice())}</span>
@@ -1427,8 +1424,8 @@ const RoomDetail = () => {
                       {selectedAmenities.map(amenityId => {
                         const amenity = room.amenities.find(a => (a._id || a) === amenityId)
                         if (!amenity) return null
-                        const amenityPrice = bookingType === 'hourly' && amenity.price 
-                          ? amenity.price * hours 
+                        const amenityPrice = bookingType === 'hourly' && amenity.price
+                          ? amenity.price * hours
                           : amenity.price || 0
                         return (
                           <div key={amenityId} className="flex justify-between text-xs opacity-60">
@@ -1483,13 +1480,12 @@ const RoomDetail = () => {
                   type="submit"
                   onClick={handleSubmitBooking}
                   disabled={!!timeConflictWarning}
-                  className={`w-full py-4 bg-primary text-white font-bold uppercase tracking-[0.2em] rounded-lg hover:brightness-105 transition-all shadow-lg shadow-primary/20 ${
-                    timeConflictWarning ? 'opacity-50 cursor-not-allowed' : ''
-                  }`}
+                  className={`w-full py-4 bg-primary text-white font-bold uppercase tracking-[0.2em] rounded-lg hover:brightness-105 transition-all shadow-lg shadow-primary/20 ${timeConflictWarning ? 'opacity-50 cursor-not-allowed' : ''
+                    }`}
                 >
                   {timeConflictWarning ? 'Thời Gian Trùng - Vui Lòng Chọn Lại' : 'Xác Nhận Đặt Phòng'}
                 </button>
-                
+
                 {room.status !== 'Available' && !timeConflictWarning && (
                   <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
                     <p className="text-xs text-blue-800 dark:text-blue-300 flex items-center gap-2">
@@ -1498,7 +1494,7 @@ const RoomDetail = () => {
                     </p>
                   </div>
                 )}
-                
+
                 <p className="text-[10px] text-center opacity-40 uppercase tracking-widest">
                   Bạn sẽ không bị tính phí ngay
                 </p>
@@ -1544,8 +1540,8 @@ const RoomDetail = () => {
           <div>
             <h4 className="text-xs font-bold uppercase tracking-widest mb-6">Địa Chỉ</h4>
             <p className="text-sm opacity-70 leading-relaxed">
-              123 Đường Biển,<br/>
-              Thành Phố, Việt Nam<br/>
+              123 Đường Biển,<br />
+              Thành Phố, Việt Nam<br />
             </p>
             <a className="text-xs font-bold text-primary mt-4 inline-block underline underline-offset-4" href="#">
               Xem Bản Đồ

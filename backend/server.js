@@ -16,6 +16,7 @@ import amenityRoutes from "./routes/amenityRoutes.js";
 import serviceRoutes from "./routes/serviceRoutes.js";
 import bookingRoutes from "./routes/bookingRoutes.js";
 import uploadRoutes from "./routes/uploadRoutes.js";
+import restaurantRoutes from "./routes/restaurantRoutes.js";
 dotenv.config();
 connectDB();
 const __filename = fileURLToPath(import.meta.url);
@@ -41,6 +42,7 @@ app.use('/api/rooms', roomRoutes);
 app.use('/api/amenities', amenityRoutes);
 app.use('/api/services', serviceRoutes);
 app.use('/api/bookings', bookingRoutes);
+app.use('/api/restaurant', restaurantRoutes);
 
 const PORT = process.env.PORT || 5000;
 httpServer.listen(PORT, () => {

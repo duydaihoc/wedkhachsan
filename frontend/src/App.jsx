@@ -17,6 +17,7 @@ import AdminBookings from './pages/Admin/AdminBookings'
 import AdminCreateBooking from './pages/Admin/AdminCreateBooking'
 import RoomDetail from './pages/RoomDetail'
 import BookingConfirm from './pages/BookingConfirm'
+import GuestBookingInfo from './pages/GuestBookingInfo'
 import PaymentMethod from './pages/PaymentMethod'
 import OnlinePayment from './pages/OnlinePayment'
 import BookingSuccess from './pages/BookingSuccess'
@@ -37,159 +38,139 @@ function App() {
           <Route path="/rooms" element={<Rooms />} />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
-          <Route 
-            path="/profile" 
+          <Route
+            path="/profile"
             element={
               <ProtectedRoute>
                 <Profile />
               </ProtectedRoute>
-            } 
+            }
           />
-          <Route 
-            path="/my-bookings" 
+          <Route
+            path="/my-bookings"
             element={
               <ProtectedRoute>
                 <MyBookings />
               </ProtectedRoute>
-            } 
+            }
           />
-          <Route 
-            path="/admin" 
+          <Route
+            path="/admin"
             element={
               <ProtectedRoute adminOnly>
                 <AdminDashboard />
               </ProtectedRoute>
-            } 
+            }
           />
-          <Route 
-            path="/admin/users" 
+          <Route
+            path="/admin/users"
             element={
               <ProtectedRoute adminOnly>
                 <AdminUsers />
               </ProtectedRoute>
-            } 
+            }
           />
-          <Route 
-            path="/admin/profile" 
+          <Route
+            path="/admin/profile"
             element={
               <ProtectedRoute adminOnly>
                 <AdminProfile />
               </ProtectedRoute>
-            } 
+            }
           />
-          <Route 
-            path="/admin/roomcategories" 
+          <Route
+            path="/admin/roomcategories"
             element={
               <ProtectedRoute adminOnly>
                 <AdminRoomCategories />
               </ProtectedRoute>
-            } 
+            }
           />
-          <Route 
-            path="/admin/roomtypes" 
+          <Route
+            path="/admin/roomtypes"
             element={
               <ProtectedRoute adminOnly>
                 <AdminRoomTypes />
               </ProtectedRoute>
-            } 
+            }
           />
-          <Route 
-            path="/admin/amenities" 
+          <Route
+            path="/admin/amenities"
             element={
               <ProtectedRoute adminOnly>
                 <AdminAmenities />
               </ProtectedRoute>
-            } 
+            }
           />
-          <Route 
-            path="/admin/services" 
+          <Route
+            path="/admin/services"
             element={
               <ProtectedRoute adminOnly>
                 <AdminServices />
               </ProtectedRoute>
-            } 
+            }
           />
-          <Route 
-            path="/admin/rooms" 
+          <Route
+            path="/admin/rooms"
             element={
               <ProtectedRoute adminOnly>
                 <AdminRooms />
               </ProtectedRoute>
-            } 
+            }
           />
-          <Route 
-            path="/admin/bookings" 
+          <Route
+            path="/admin/bookings"
             element={
               <ProtectedRoute adminOnly>
                 <AdminBookings />
               </ProtectedRoute>
-            } 
+            }
           />
-          <Route 
-            path="/admin/bookings/create" 
+          <Route
+            path="/admin/bookings/create"
             element={
               <ProtectedRoute adminOnly>
                 <AdminCreateBooking />
               </ProtectedRoute>
-            } 
+            }
           />
           <Route path="/rooms/:id" element={<RoomDetail />} />
-          <Route 
-            path="/booking/confirm" 
+          <Route path="/booking/guest-info" element={<GuestBookingInfo />} />
+          <Route
+            path="/booking/confirm"
             element={
               <ProtectedRoute>
                 <BookingConfirm />
               </ProtectedRoute>
-            } 
+            }
           />
-          <Route 
-            path="/booking/payment-method" 
-            element={
-              <ProtectedRoute>
-                <PaymentMethod />
-              </ProtectedRoute>
-            } 
-          />
-          <Route 
-            path="/booking/online-payment" 
+          <Route path="/booking/payment-method" element={<PaymentMethod />} />
+          <Route
+            path="/booking/online-payment"
             element={
               <ProtectedRoute>
                 <OnlinePayment />
               </ProtectedRoute>
-            } 
+            }
           />
-          <Route 
-            path="/booking/pending" 
+          <Route
+            path="/booking/pending"
             element={
               <ProtectedRoute>
                 <BookingPending />
               </ProtectedRoute>
-            } 
+            }
           />
-          <Route 
-            path="/booking/payment-pending/:id" 
+          <Route
+            path="/booking/payment-pending/:id"
             element={
               <ProtectedRoute>
                 <PaymentPending />
               </ProtectedRoute>
-            } 
+            }
           />
-          <Route 
-            path="/booking/confirmation-pending/:id" 
-            element={
-              <ProtectedRoute>
-                <BookingConfirmationPending />
-              </ProtectedRoute>
-            } 
-          />
-          <Route 
-            path="/booking/success/:id" 
-            element={
-              <ProtectedRoute>
-                <BookingSuccess />
-              </ProtectedRoute>
-            } 
-          />
+          <Route path="/booking/confirmation-pending/:id" element={<BookingConfirmationPending />} />
+          <Route path="/booking/success/:id" element={<BookingSuccess />} />
         </Routes>
       </Router>
     </AuthProvider>

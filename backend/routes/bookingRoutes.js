@@ -9,17 +9,22 @@ import {
   userConfirmOnlinePayment,
   cancelBooking,
   createBookingForUser,
+  createGuestBooking,
   getRoomBookings,
   getPublicRoomSchedule,
   changeRoom,
-  getAvailableRoomsForChange
+  getAvailableRoomsForChange,
+  getGuestBookingById
 } from '../controllers/bookingController.js';
 import { protect, admin } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
 
-// Public routes (không cần đăng nhập)
-router.route('/public/room-schedule').get(getPublicRoomSchedule); // Lấy lịch đặt phòng công khai
+// Public routes (không cần đăng nhập) - Đặt lên đầu tiên để đảm bảo không bị protect
+router.post('/public/guest-booking', createGuestBooking); // Đặt phòng cho khách vãng lai
+router.get('/public/room-schedule', getPublicRoomSchedule); // Lấy lịch đặt phòng công khai
+router.get('/public/:id', getGuestBookingById); // Lấy thông tin booking cho khách vãng lai
+
 
 // Tất cả routes dưới đây đều cần đăng nhập
 router.use(protect);

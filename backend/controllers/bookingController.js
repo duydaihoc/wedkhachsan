@@ -17,15 +17,15 @@ const checkTimeOverlap = (start1Date, start1Time, end1Date, end1Time, start2Date
   const end1 = parseDateTime(end1Date, end1Time);
   const start2 = parseDateTime(start2Date, start2Time);
   const end2 = parseDateTime(end2Date, end2Time);
-  
+
   // Kiểm tra overlap: 2 khoảng thời gian overlap nếu:
   // - Có bất kỳ điểm nào trong khoảng 1 nằm trong khoảng 2, hoặc ngược lại
   // - Hoặc khoảng 1 bao phủ hoàn toàn khoảng 2, hoặc ngược lại
   // Logic: start1 < end2 AND start2 < end1 (bao gồm cả trường hợp bằng nhau ở đầu hoặc cuối)
   // Nhưng không overlap nếu: end1 <= start2 hoặc end2 <= start1
-  
+
   const hasOverlap = !(end1 <= start2 || end2 <= start1);
-  
+
   return hasOverlap;
 };
 
@@ -81,14 +81,14 @@ export const createBooking = async (req, res) => {
     const conflictingBookings = existingBookings.filter(booking => {
       const bookingCheckInDate = formatDateString(booking.checkInDate);
       const bookingCheckOutDate = formatDateString(booking.checkOutDate);
-      
+
       const hasConflict = checkTimeOverlap(
         checkInDate, checkInTime,
         checkOutDate, checkOutTime,
         bookingCheckInDate, booking.checkInTime,
         bookingCheckOutDate, booking.checkOutTime
       );
-      
+
       // Log để debug
       if (hasConflict) {
         console.log('⚠️ Phát hiện trùng giờ:', {
@@ -97,7 +97,7 @@ export const createBooking = async (req, res) => {
           bookingCode: booking.bookingCode
         });
       }
-      
+
       return hasConflict;
     });
 
@@ -108,8 +108,8 @@ export const createBooking = async (req, res) => {
         const checkOutStr = `${new Date(b.checkOutDate).toLocaleDateString('vi-VN')} ${b.checkOutTime}`;
         return `• ${checkInStr} - ${checkOutStr}`;
       }).join('\n');
-      
-      return res.status(400).json({ 
+
+      return res.status(400).json({
         message: `⚠️ Phòng đã được đặt trong khoảng thời gian này!\n\nKhung giờ bị trùng:\n${conflictDetails}\n\nVui lòng chọn thời gian khác hoặc xem lịch đặt phòng để chọn khung giờ còn trống.`
       });
     }
@@ -117,7 +117,7 @@ export const createBooking = async (req, res) => {
     // Tính số tiền còn lại
     let paidAmount = 0;
     let remainingAmount = totalPrice;
-    
+
     if (paymentMethod === 'online') {
       // Thanh toán online: đặt cọc 30%
       paidAmount = Math.round(totalPrice * 0.3);
@@ -176,7 +176,7 @@ export const createBooking = async (req, res) => {
           message: `Có đặt phòng mới từ ${populatedBooking.user.fullName || populatedBooking.user.username}`
         });
       }
-      
+
       // Gửi thông báo cho user
       io.to(`user-${userId}`).emit('booking-created', {
         booking: populatedBooking,
@@ -271,7 +271,7 @@ export const updateBookingStatus = async (req, res) => {
 
     const oldStatus = booking.status;
     const wasBookingConfirmed = booking.bookingConfirmed;
-    
+
     // Kiểm tra nếu đang cố check-in: phải đảm bảo phòng không có booking nào khác đang checked-in
     if (status === 'checked-in' && oldStatus !== 'checked-in') {
       // Format date strings đúng cách (YYYY-MM-DD)
@@ -297,11 +297,11 @@ export const updateBookingStatus = async (req, res) => {
         const activeBooking = await Booking.findById(activeBookings[0]._id)
           .populate('user', 'username fullName')
           .populate('room');
-        
+
         const guestName = activeBooking.user?.fullName || activeBooking.user?.username || 'Khách hàng';
         const bookingCode = activeBooking.bookingCode || 'N/A';
-        
-        return res.status(400).json({ 
+
+        return res.status(400).json({
           message: `Phòng ${booking.room.roomNumber || booking.room._id} đang được sử dụng bởi booking ${bookingCode} (${guestName}). Vui lòng đợi khách hàng trả phòng (check-out) trước khi cho booking khác nhận phòng.`
         });
       }
@@ -318,8 +318,8 @@ export const updateBookingStatus = async (req, res) => {
           _id: { $ne: booking._id },
           status: { $in: ['pending', 'confirmed', 'payment-pending'] } // Chưa checked-in
         })
-        .populate('user', 'username fullName')
-        .sort({ checkInDate: 1, checkInTime: 1 }); // Sắp xếp theo thời gian check-in
+          .populate('user', 'username fullName')
+          .sort({ checkInDate: 1, checkInTime: 1 }); // Sắp xếp theo thời gian check-in
 
         // Lọc các booking có check-in sớm hơn booking hiện tại
         const earlierPendingBookings = earlierBookings.filter(earlierBooking => {
@@ -333,12 +333,12 @@ export const updateBookingStatus = async (req, res) => {
           const earliestBooking = earlierPendingBookings[0];
           const earliestCheckInDate = formatDateString(earliestBooking.checkInDate);
           const earliestCheckInDateTime = new Date(`${earliestCheckInDate}T${earliestBooking.checkInTime || '00:00'}`);
-          
+
           const guestName = earliestBooking.user?.fullName || earliestBooking.user?.username || 'Khách hàng';
           const bookingCode = earliestBooking.bookingCode || 'N/A';
           const checkInStr = `${new Date(earliestBooking.checkInDate).toLocaleDateString('vi-VN')} ${earliestBooking.checkInTime}`;
-          
-          return res.status(409).json({ 
+
+          return res.status(409).json({
             message: `Có booking khác ở phòng ${booking.room.roomNumber || booking.room._id} với thời gian check-in sớm hơn nhưng chưa nhận phòng.`,
             earlierBooking: {
               _id: earliestBooking._id,
@@ -359,12 +359,12 @@ export const updateBookingStatus = async (req, res) => {
         }
       }
     }
-    
+
     // Nếu đang xác nhận booking (status = 'confirmed' và chưa confirmed), đánh dấu đã xác nhận
     if (status === 'confirmed' && !booking.bookingConfirmed) {
       booking.bookingConfirmed = true;
     }
-    
+
     // Nếu check-out và đã thanh toán đủ (hoặc có hoàn tiền), tự động chuyển sang completed
     if (status === 'checked-out' && booking.paymentStatus === 'paid') {
       booking.status = 'completed';
@@ -374,7 +374,7 @@ export const updateBookingStatus = async (req, res) => {
 
     // Cập nhật trạng thái phòng dựa trên trạng thái booking
     const room = booking.room;
-    
+
     if (booking.status === 'checked-in') {
       room.status = 'Occupied';
     } else if (booking.status === 'checked-out') {
@@ -404,7 +404,7 @@ export const updateBookingStatus = async (req, res) => {
     // Chỉ gửi thông báo khi xác nhận booking (không gửi cho check-in, check-out, payment)
     try {
       const io = getIO();
-      
+
       // Nếu vừa mới xác nhận booking (bookingConfirmed chuyển từ false sang true)
       if (populatedBooking.bookingConfirmed && !wasBookingConfirmed && populatedBooking.status === 'confirmed') {
         io.to(`user-${populatedBooking.user._id}`).emit('booking-updated', {
@@ -515,7 +515,7 @@ export const userConfirmOnlinePayment = async (req, res) => {
         booking: populatedBooking,
         message: `Có đặt phòng mới từ ${populatedBooking.user.fullName || populatedBooking.user.username} - Đã thanh toán online`
       });
-      
+
       // Không gửi thông báo cho user (chỉ reload trang)
     } catch (socketError) {
       console.error('Socket.IO error:', socketError);
@@ -544,7 +544,7 @@ export const confirmOnlinePayment = async (req, res) => {
     // Xác nhận đã nhận tiền đặt cọc
     booking.status = 'confirmed';
     booking.bookingConfirmed = false; // Chưa xác nhận booking, chỉ mới xác nhận thanh toán
-    
+
     // Đánh dấu phòng đã được đặt
     const room = booking.room;
     room.status = 'Occupied';
@@ -589,7 +589,7 @@ export const cancelBooking = async (req, res) => {
 
     // Lưu trạng thái cũ để gửi thông báo phù hợp
     const oldStatus = booking.status;
-    
+
     booking.status = 'cancelled';
 
     // Trả phòng về Available (cho cả checked-in và các trạng thái khác)
@@ -613,10 +613,10 @@ export const cancelBooking = async (req, res) => {
       // Phân biệt loại hủy: hủy xác nhận thanh toán (từ payment-pending) vs hủy booking đã xác nhận thanh toán (từ confirmed)
       const wasPaymentPending = oldStatus === 'payment-pending' || oldStatus === 'pending';
       const wasConfirmed = oldStatus === 'confirmed';
-      
+
       io.to(`user-${populatedBooking.user._id}`).emit('booking-updated', {
         booking: populatedBooking,
-        message: wasPaymentPending 
+        message: wasPaymentPending
           ? 'Xác nhận thanh toán đã bị hủy do lỗi ngân hàng hoặc vấn đề kỹ thuật'
           : 'Admin đã hủy xác nhận đặt phòng của bạn',
         status: populatedBooking.status,
@@ -686,14 +686,14 @@ export const createBookingForUser = async (req, res) => {
     const conflictingBookings = existingBookings.filter(booking => {
       const bookingCheckInDate = formatDateString(booking.checkInDate);
       const bookingCheckOutDate = formatDateString(booking.checkOutDate);
-      
+
       const hasConflict = checkTimeOverlap(
         checkInDate, checkInTime,
         checkOutDate, checkOutTime,
         bookingCheckInDate, booking.checkInTime,
         bookingCheckOutDate, booking.checkOutTime
       );
-      
+
       // Log để debug
       if (hasConflict) {
         console.log('⚠️ Phát hiện trùng giờ (Admin):', {
@@ -702,7 +702,7 @@ export const createBookingForUser = async (req, res) => {
           bookingCode: booking.bookingCode
         });
       }
-      
+
       return hasConflict;
     });
 
@@ -713,8 +713,8 @@ export const createBookingForUser = async (req, res) => {
         const checkOutStr = `${new Date(b.checkOutDate).toLocaleDateString('vi-VN')} ${b.checkOutTime}`;
         return `• ${checkInStr} - ${checkOutStr}`;
       }).join('\n');
-      
-      return res.status(400).json({ 
+
+      return res.status(400).json({
         message: `⚠️ Phòng đã được đặt trong khoảng thời gian này!\n\nKhung giờ bị trùng:\n${conflictDetails}\n\nVui lòng chọn thời gian khác.`
       });
     }
@@ -788,7 +788,7 @@ export const createBookingForUser = async (req, res) => {
         booking: populatedBooking,
         message: 'Đặt phòng của bạn đã được tạo thành công!'
       });
-      
+
       // Gửi thông báo cho admin
       io.to('admin-room').emit('new-booking', {
         booking: populatedBooking,
@@ -804,6 +804,182 @@ export const createBookingForUser = async (req, res) => {
     res.status(500).json({ message: 'Không thể tạo đặt phòng', error: error.message });
   }
 };
+
+// Tạo booking cho khách vãng lai (không cần đăng nhập)
+export const createGuestBooking = async (req, res) => {
+  try {
+    const {
+      guestInfo, // { fullName, phone, email }
+      room,
+      bookingType,
+      checkInDate,
+      checkInTime,
+      checkOutDate,
+      checkOutTime,
+      hours,
+      adults,
+      children,
+      amenities,
+      services,
+      roomPrice,
+      amenitiesPrice,
+      servicesPrice,
+      totalPrice
+    } = req.body;
+
+    // Validate thông tin khách vãng lai
+    if (!guestInfo || !guestInfo.fullName || !guestInfo.phone) {
+      return res.status(400).json({
+        message: 'Vui lòng cung cấp đầy đủ thông tin: Họ tên và Số điện thoại'
+      });
+    }
+
+    // Kiểm tra phòng có tồn tại không
+    const roomData = await Room.findById(room).populate('category').populate('type');
+    if (!roomData) {
+      return res.status(404).json({ message: 'Phòng không tồn tại' });
+    }
+
+    // Kiểm tra phòng có sẵn không (chưa được đặt trong khoảng thời gian này)
+    const existingBookings = await Booking.find({
+      room: room,
+      status: { $in: ['pending', 'confirmed', 'checked-in', 'payment-pending'] }
+    });
+
+    // Format date strings đúng cách (YYYY-MM-DD)
+    const formatDateString = (date) => {
+      if (date instanceof Date) {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+      }
+      return date;
+    };
+
+    // Kiểm tra xem có booking nào trùng thời gian không
+    const conflictingBookings = existingBookings.filter(booking => {
+      const bookingCheckInDate = formatDateString(booking.checkInDate);
+      const bookingCheckOutDate = formatDateString(booking.checkOutDate);
+
+      const hasConflict = checkTimeOverlap(
+        checkInDate, checkInTime,
+        checkOutDate, checkOutTime,
+        bookingCheckInDate, booking.checkInTime,
+        bookingCheckOutDate, booking.checkOutTime
+      );
+
+      if (hasConflict) {
+        console.log('⚠️ Phát hiện trùng giờ (Guest):', {
+          newBooking: `${checkInDate} ${checkInTime} - ${checkOutDate} ${checkOutTime}`,
+          existingBooking: `${bookingCheckInDate} ${booking.checkInTime} - ${bookingCheckOutDate} ${booking.checkOutTime}`,
+          bookingCode: booking.bookingCode
+        });
+      }
+
+      return hasConflict;
+    });
+
+    if (conflictingBookings.length > 0) {
+      const conflictDetails = conflictingBookings.map(b => {
+        const checkInStr = `${new Date(b.checkInDate).toLocaleDateString('vi-VN')} ${b.checkInTime}`;
+        const checkOutStr = `${new Date(b.checkOutDate).toLocaleDateString('vi-VN')} ${b.checkOutTime}`;
+        return `• ${checkInStr} - ${checkOutStr}`;
+      }).join('\n');
+
+      return res.status(400).json({
+        message: `⚠️ Phòng đã được đặt trong khoảng thời gian này!\n\nKhung giờ bị trùng:\n${conflictDetails}\n\nVui lòng chọn thời gian khác.`
+      });
+    }
+
+    // Tạo user tạm cho khách vãng lai
+    const tempUsername = `guest_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+    const tempEmail = guestInfo.email || `guest_${Date.now()}@temp.com`;
+    const tempPassword = Math.random().toString(36).substring(2, 15);
+
+    const guestUser = await User.create({
+      username: tempUsername,
+      email: tempEmail,
+      password: tempPassword, // Sẽ được hash trong pre-save hook
+      fullName: guestInfo.fullName,
+      phone: guestInfo.phone,
+      isAdmin: false
+    });
+
+    // Tạo Date object từ date string đúng cách (tránh timezone issues)
+    const parseLocalDate = (dateString) => {
+      const [year, month, day] = dateString.split('-').map(Number);
+      return new Date(year, month - 1, day);
+    };
+
+    // Tạo booking với paymentMethod = 'cash' (khách vãng lai chỉ thanh toán tại quầy)
+    const booking = await Booking.create({
+      user: guestUser._id,
+      room,
+      bookingType,
+      checkInDate: parseLocalDate(checkInDate),
+      checkInTime,
+      checkOutDate: parseLocalDate(checkOutDate),
+      checkOutTime,
+      hours: hours || 1,
+      adults: adults || 1,
+      children: children || 0,
+      amenities: amenities || [],
+      services: services || [],
+      roomPrice,
+      amenitiesPrice,
+      servicesPrice,
+      totalPrice,
+      paymentMethod: 'cash', // Luôn là cash cho khách vãng lai
+      paidAmount: 0,
+      remainingAmount: totalPrice,
+      paymentStatus: 'pending',
+      status: 'pending'
+    });
+
+    const populatedBooking = await Booking.findById(booking._id)
+      .populate('user', 'username email fullName phone')
+      .populate('room')
+      .populate('amenities')
+      .populate('services');
+
+    // Gửi thông báo real-time cho admin
+    try {
+      const io = getIO();
+      io.to('admin-room').emit('new-booking', {
+        booking: populatedBooking,
+        message: `Có đặt phòng mới từ khách vãng lai: ${guestInfo.fullName}`
+      });
+    } catch (socketError) {
+      console.error('Socket.IO error:', socketError);
+    }
+
+    res.status(201).json(populatedBooking);
+  } catch (error) {
+    console.error('Error creating guest booking:', error);
+    res.status(500).json({ message: 'Không thể tạo đặt phòng', error: error.message });
+  }
+};
+
+// Lấy thông tin booking cho khách vãng lai (Public access)
+export const getGuestBookingById = async (req, res) => {
+  try {
+    const booking = await Booking.findById(req.params.id)
+      .populate('user', 'username email fullName phone')
+      .populate('room')
+      .populate('amenities')
+      .populate('services');
+
+    if (booking) {
+      res.json(booking);
+    } else {
+      res.status(404).json({ message: 'Không tìm thấy đặt phòng' });
+    }
+  } catch (error) {
+    res.status(500).json({ message: 'Lỗi server', error: error.message });
+  }
+};
+
 
 // Lấy bookings của một phòng trong khoảng thời gian (để hiển thị lịch)
 export const getRoomBookings = async (req, res) => {
@@ -952,7 +1128,7 @@ export const getAvailableRoomsForChange = async (req, res) => {
       const hasConflict = conflictingBookings.some(existingBooking => {
         const existingCheckInDate = formatDateString(existingBooking.checkInDate);
         const existingCheckOutDate = formatDateString(existingBooking.checkOutDate);
-        
+
         return checkTimeOverlap(
           bookingCheckInDate, booking.checkInTime,
           bookingCheckOutDate, booking.checkOutTime,
@@ -977,17 +1153,17 @@ export const getAvailableRoomsForChange = async (req, res) => {
 
         // Tính điểm tối ưu để sắp xếp
         let score = 0;
-        
+
         // Ưu tiên phòng cùng loại (type) - điểm cao nhất
         if (room.type?._id?.toString() === booking.room.type?._id?.toString()) {
           score += 1000;
         }
-        
+
         // Ưu tiên phòng cùng tầng
         if (room.floor === booking.room.floor) {
           score += 500;
         }
-        
+
         // Ưu tiên phòng có giá gần nhất (chênh lệch nhỏ)
         const currentPrice = booking.roomPrice || 0;
         if (currentPrice > 0) {
@@ -996,14 +1172,14 @@ export const getAvailableRoomsForChange = async (req, res) => {
           // Giá càng gần càng tốt (tối đa 300 điểm)
           score += Math.max(0, 300 - priceDiffPercent * 3);
         }
-        
+
         // Ưu tiên phòng Available hơn Dirty
         if (room.status === 'Available') {
           score += 100;
         } else if (room.status === 'Dirty') {
           score += 50; // Vẫn có thể dùng nhưng cần dọn
         }
-        
+
         // Ưu tiên phòng cùng category
         if (room.category?._id?.toString() === booking.room.category?._id?.toString()) {
           score += 200;
@@ -1088,7 +1264,7 @@ export const changeRoom = async (req, res) => {
     const hasConflict = existingBookings.some(existingBooking => {
       const existingCheckInDate = formatDateString(existingBooking.checkInDate);
       const existingCheckOutDate = formatDateString(existingBooking.checkOutDate);
-      
+
       return checkTimeOverlap(
         bookingCheckInDate, booking.checkInTime,
         bookingCheckOutDate, booking.checkOutTime,
@@ -1121,15 +1297,15 @@ export const changeRoom = async (req, res) => {
     // Cập nhật booking với phòng mới và giá mới
     const oldTotalPrice = booking.totalPrice;
     const oldRoomPrice = booking.roomPrice;
-    
+
     booking.room = newRoomId;
     booking.roomPrice = newRoomPrice;
     booking.totalPrice = newRoomPrice + (booking.amenitiesPrice || 0) + (booking.servicesPrice || 0);
-    
+
     // Kiểm tra nếu đã thanh toán một phần
     let refundAmount = 0;
     let needsRefund = false;
-    
+
     if (booking.paidAmount > 0) {
       // Nếu tổng tiền mới nhỏ hơn số tiền đã thanh toán
       if (booking.totalPrice < booking.paidAmount) {
@@ -1142,7 +1318,7 @@ export const changeRoom = async (req, res) => {
       } else {
         // Tổng tiền mới >= số tiền đã thanh toán
         booking.remainingAmount = booking.totalPrice - booking.paidAmount;
-         
+
         if (booking.remainingAmount > 0) {
           booking.paymentStatus = 'partial';
         } else {
@@ -1187,7 +1363,7 @@ export const changeRoom = async (req, res) => {
     try {
       const io = getIO();
       let message = `Phòng của bạn đã được chuyển từ ${oldRoom.roomNumber} sang ${newRoom.roomNumber}.`;
-      
+
       if (needsRefund) {
         message += ` Phòng mới rẻ hơn, bạn sẽ được hoàn lại ${refundAmount.toLocaleString('vi-VN')} VND.`;
       } else if (booking.remainingAmount > 0) {
@@ -1195,7 +1371,7 @@ export const changeRoom = async (req, res) => {
       } else {
         message += ` Tổng tiền mới: ${populatedBooking.totalPrice.toLocaleString('vi-VN')} VND.`;
       }
-      
+
       io.to(`user-${populatedBooking.user._id}`).emit('booking-updated', {
         booking: populatedBooking,
         message: message,
