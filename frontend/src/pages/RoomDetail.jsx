@@ -517,7 +517,7 @@ const RoomDetail = () => {
 
     // Chuẩn bị dữ liệu booking
     const bookingData = {
-      room: room._id,
+      room: room,
       bookingType,
       checkInDate: checkIn,
       checkInTime,
@@ -526,8 +526,8 @@ const RoomDetail = () => {
       hours: bookingType === 'hourly' ? hours : 1,
       adults,
       children,
-      amenities: selectedAmenities,
-      services: bookingType === 'hourly' ? [] : selectedServices, // Chỉ chọn services khi daily/overnight
+      amenities: room.amenities ? room.amenities.filter(a => selectedAmenities.includes(a._id || a)) : [],
+      services: bookingType === 'hourly' ? [] : services.filter(s => selectedServices.includes(s._id)),
       roomPrice: calculateRoomPrice(),
       amenitiesPrice: calculateAmenitiesPrice(),
       servicesPrice: calculateServicesPrice(),
@@ -900,8 +900,8 @@ const RoomDetail = () => {
                       <div
                         key={amenityId}
                         className={`flex items-start gap-4 p-4 rounded-lg border transition-all ${isSelectable
-                            ? `cursor-pointer hover:border-primary ${isSelected ? 'border-primary bg-primary/5' : 'border-black/5 dark:border-white/5'}`
-                            : ''
+                          ? `cursor-pointer hover:border-primary ${isSelected ? 'border-primary bg-primary/5' : 'border-black/5 dark:border-white/5'}`
+                          : ''
                           }`}
                         onClick={() => isSelectable && toggleAmenity(amenityId)}
                       >
@@ -930,8 +930,8 @@ const RoomDetail = () => {
                             </div>
                             {isSelectable && (
                               <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-all ${isSelected
-                                  ? 'bg-primary border-primary'
-                                  : 'border-black/20 dark:border-white/20'
+                                ? 'bg-primary border-primary'
+                                : 'border-black/20 dark:border-white/20'
                                 }`}>
                                 {isSelected && (
                                   <span className="material-symbols-outlined text-white text-sm">check</span>
@@ -1359,8 +1359,8 @@ const RoomDetail = () => {
                             key={service._id}
                             onClick={() => toggleService(service._id)}
                             className={`flex items-center gap-3 p-2 rounded-lg border cursor-pointer transition-all ${isSelected
-                                ? 'border-primary bg-primary/5'
-                                : 'border-black/10 dark:border-white/10 hover:border-primary/50'
+                              ? 'border-primary bg-primary/5'
+                              : 'border-black/10 dark:border-white/10 hover:border-primary/50'
                               }`}
                           >
                             {service.image ? (
@@ -1389,8 +1389,8 @@ const RoomDetail = () => {
                               </p>
                             </div>
                             <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-all ${isSelected
-                                ? 'bg-primary border-primary'
-                                : 'border-black/20 dark:border-white/20'
+                              ? 'bg-primary border-primary'
+                              : 'border-black/20 dark:border-white/20'
                               }`}>
                               {isSelected && (
                                 <span className="material-symbols-outlined text-white text-sm">check</span>
